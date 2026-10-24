@@ -1,0 +1,182 @@
+import { Capacitor, registerPlugin } from '@capacitor/core'
+import type { Device } from './airmic-data'
+
+/**
+ * 手机端 ↔ 电脑端的通道
+ * ------------------------------------------------------------
+ * 真实实现走 Kotlin 原生插件（TCP 控制通道 + UDP 音频）：
+ *   - 扫描：NsdManager（mDNS `_airmic._tcp`）
+ *   - 控制：TCP + JSON Lines
+ *   - 音频：AudioRecord → MediaCodec(Opus) → UDP
+ *
+ * Web 版（浏览器里跑 UI 时）没有原生通道，用一个**仅供开发**的
+ * 本地模拟实现顶上，正式的安卓包里永远不会走到它。
+ */
+export interface AirMicTransport {
+  /** 扫描局域网里的电脑 */
+  scan(): Promise<Device[]>
+  /** 本机设备信息（id / 名字）—— 发消息时必须带 deviceId */
+  getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }>
+  /** 把配对 token 存到原生侧（重连时自动带上） */
+  saveToken(deviceId: string, token: string): Promise<void>
+  /** 连上某台电脑 */
+  connect(target: { deviceId: string; host: string; port: number }): Promise<void>
+  disconnect(): Promise<void>
+  /** 发一条控制消息 */
+  send(message: Record<string, unknown>): Promise<void>
+  /** 收到电脑端的消息 */
+  onMessage(handler: (message: Record<string, any>) => void): void
+  /** 开始 / 停止手机麦克风（推流） */
+  startMic(mode: 'continuous' | 'ptt'): Promise<void>
+  stopMic(): Promise<void>
+  /** 连接状态变化 */
+  onConnection(handler: (state: { connected: boolean; error?: string }) => void): void
+}
+
+/* ------------------------------------------------------------------ *
+ * 原生实现（安卓）
+ * ------------------------------------------------------------------ */
+
+interface AirMicNativePlugin {
+  scan(): Promise<{ devices: Device[] }>
+  getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }>
+  saveToken(options: { deviceId: string; token: string }): Promise<void>
+  connect(options: { deviceId: string; host: string; port: number }): Promise<void>
+  disconnect(): Promise<void>
+  send(options: { payload: string }): Promise<void>
+  startMic(options: { mode: string }): Promise<void>
+  stopMic(): Promise<void>
+  addListener(event: string, handler: (data: any) => void): Promise<{ remove: () => void }>
+}
+
+const AirMicNative = registerPlugin<AirMicNativePlugin>('AirMic')
+
+class NativeTransport implements AirMicTransport {
+  async scan(): Promise<Device[]> {
+    const result = await AirMicNative.scan()
+    return result.devices ?? []
+  }
+
+  async getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }> {
+    return AirMicNative.getDeviceInfo()
+  }
+
+  async saveToken(deviceId: string, token: string): Promise<void> {
+    await AirMicNative.saveToken({ deviceId, token })
+  }
+
+  async connect(target: { deviceId: string; host: string; port: number }): Promise<void> {
+    await AirMicNative.connect(target)
+  }
+
+  async disconnect(): Promise<void> {
+    await AirMicNative.disconnect()
+  }
+
+  async send(message: Record<string, unknown>): Promise<void> {
+    await AirMicNative.send({ payload: JSON.stringify(message) })
+  }
+
+  async startMic(mode: 'continuous' | 'ptt'): Promise<void> {
+    await AirMicNative.startMic({ mode })
+  }
+
+  async stopMic(): Promise<void> {
+    await AirMicNative.stopMic()
+  }
+
+  onMessage(handler: (message: Record<string, any>) => void): void {
+    void AirMicNative.addListener('message', (data) => handler(data.payload))
+  }
+
+  onConnection(handler: (state: { connected: boolean; error?: string }) => void): void {
+    void AirMicNative.addListener('connection', (data) => handler(data))
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 开发用本地模拟（只在浏览器里跑 UI 时生效）
+ * ------------------------------------------------------------------ */
+
+class LoopbackTransport implements AirMicTransport {
+  private messageHandlers: ((message: Record<string, any>) => void)[] = []
+  private connectionHandlers: ((state: { connected: boolean; error?: string }) => void)[] = []
+
+  async getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }> {
+    return { deviceId: 'dev-loopback', deviceName: '开发模式' }
+  }
+
+  async saveToken(): Promise<void> {
+    /* 开发模式不落盘 */
+  }
+
+  async scan(): Promise<Device[]> {
+    await delay(500)
+    return [
+      {
+        id: 'dev-mac',
+        name: '开发用电脑',
+        model: 'Loopback',
+        signal: 4,
+        paired: false,
+        lastSeen: Date.now(),
+      },
+    ]
+  }
+
+  async connect(): Promise<void> {
+    await delay(300)
+    this.connectionHandlers.forEach((handler) => handler({ connected: true }))
+    this.emit({
+      type: 'welcome',
+      pairingRequired: false,
+      server: {
+        recording: false,
+        foregroundApp: '访达',
+        foregroundBundleId: 'com.apple.finder',
+        outputDeviceId: '',
+        bufferMs: 60,
+      },
+    })
+  }
+
+  async disconnect(): Promise<void> {
+    this.connectionHandlers.forEach((handler) => handler({ connected: false }))
+  }
+
+  async send(): Promise<void> {
+    /* 开发模式下不发真实消息 */
+  }
+
+  async startMic(): Promise<void> {
+    await delay(100)
+  }
+
+  async stopMic(): Promise<void> {
+    await delay(100)
+  }
+
+  onMessage(handler: (message: Record<string, any>) => void): void {
+    this.messageHandlers.push(handler)
+  }
+
+  onConnection(handler: (state: { connected: boolean; error?: string }) => void): void {
+    this.connectionHandlers.push(handler)
+  }
+
+  private emit(message: Record<string, any>) {
+    this.messageHandlers.forEach((handler) => handler(message))
+  }
+}
+
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** 正式安卓包 → 原生通道；浏览器开发 → 本地模拟 */
+export function createTransport(): AirMicTransport {
+  return Capacitor.isNativePlatform() ? new NativeTransport() : new LoopbackTransport()
+}
+
+/** 当前是不是「只在浏览器里跑 UI」的开发模式 */
+export const isDevLoopback = !Capacitor.isNativePlatform()

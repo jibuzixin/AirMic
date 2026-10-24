@@ -1,0 +1,128 @@
+@import "tailwindcss";
+
+/* AirMic 是纯深色应用：把 dark 变体从「跟随系统」改成「跟随 html.dark」，
+   这样 EasyUI 组件里的 dark: 变体在任何系统设置下都走深色，
+   不会出现浅色控件漏进深色界面。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================================
+   AirMic Design Tokens
+   深色 + 单一强调色琥珀 #FFB020
+   语义色：连接绿 #35C98A / 收音红 #FF5A5A
+   ============================================================ */
+@theme {
+  /* --- 强调色 --- */
+  --color-amber-accent: #FFB020;
+  --color-amber-accent-hover: #FFC24D;
+  --color-amber-accent-muted: #8A5F14;
+
+  /* --- 语义色 --- */
+  --color-connected: #35C98A;
+  --color-connected-muted: #1E5C42;
+  --color-recording: #FF5A5A;
+  --color-recording-muted: #6B2626;
+
+  /* --- 中性色（暖调偏冷，带一点蓝，避免纯黑） --- */
+  --color-surface-0: #0B0B0D;
+  --color-surface-1: #141417;
+  --color-surface-2: #1C1C20;
+  --color-surface-3: #26262B;
+  --color-border-subtle: #2A2A30;
+  --color-border-strong: #3A3A42;
+
+  --color-text-primary: #F2F2F4;
+  --color-text-secondary: #A0A0AA;
+  --color-text-tertiary: #6E6E78;
+  --color-text-faint: #4A4A52;
+
+  /* --- 字体 --- */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+
+  /* --- 动效（Apple 物理感） --- */
+  --ease-spring-soft: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--color-surface-0);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  overscroll-behavior: none;
+}
+
+/* macOS 风格滚动条 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #4A4A54;
+}
+
+/* ============================================================
+   Motion tokens（与 EasyUI motion-tokens 对齐）
+   ============================================================ */
+:root {
+  --motion-spring-smooth: 300 30;
+  --motion-spring-snappy: 400 25;
+  --motion-spring-bouncy: 500 15;
+  --motion-spring-gentle: 180 24;
+}
+
+/* 尊重系统的减弱动效设置 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================================
+   组件基础
+   ============================================================ */
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono);
+}
+
+/* 毛玻璃（macOS vibrancy 近似） */
+.vibrancy {
+  background: color-mix(in srgb, var(--color-surface-1) 72%, transparent);
+  backdrop-filter: saturate(180%) blur(24px);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+}
+
+/* 焦点可见 */
+:focus-visible {
+  outline: 2px solid var(--color-amber-accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}

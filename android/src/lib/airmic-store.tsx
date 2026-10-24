@@ -359,14 +359,28 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         deviceName: device.name,
         model: device.model,
       })
-      send({
-        type: 'pair.request',
-        deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName || device.name,
-        model: deviceInfo.deviceName,
-      })
+      // ⚠️ 必须**先连上控制通道**再发配对请求 ——
+      // 没连接时消息会被直接丢掉，电脑端收不到（表现为「手机在等、电脑没反应」）。
+      void transport
+        .connect({
+          deviceId: device.id,
+          host: device.host ?? '',
+          port: device.port ?? 47471,
+        })
+        .then(() => {
+          send({
+            type: 'pair.request',
+            deviceId: deviceInfo.deviceId,
+            deviceName: deviceInfo.deviceName || device.name,
+            model: deviceInfo.deviceName,
+          })
+        })
+        .catch((error: Error) => {
+          setPairingRequest(null)
+          setConnectionError(error.message || '连不上电脑，确认 AirMic 还在运行、手机和电脑在同一个 Wi-Fi 下')
+        })
     },
-    [deviceInfo.deviceId, deviceInfo.deviceName, devices, send],
+    [deviceInfo.deviceId, deviceInfo.deviceName, devices, send, transport],
   )
 
   const approvePairing = useCallback(() => setPairingRequest(null), [])

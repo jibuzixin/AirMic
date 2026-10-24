@@ -43,6 +43,14 @@ struct PanelView: View {
         .frame(width: 318)
         .background(Theme.surface1)
         .foregroundStyle(Theme.textPrimary)
+        .onAppear {
+            // 面板打开时刷新设备列表（设备可能被插拔）
+            state.refreshDevices()
+        }
+        .onChange(of: state.pendingRequests.count) { count in
+            // 面板确实收到了配对请求（排查「手机在等、电脑没反应」用）
+            AirMicKit.Log.info("面板：待处理的配对请求 = \(count)")
+        }
     }
 
     // MARK: - 状态行
@@ -134,23 +142,44 @@ struct PanelView: View {
     // MARK: - 输出设备
 
     private var outputDeviceRow: some View {
-        HStack(spacing: 8) {
-            Text("音频输出")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textSecondary)
-            Spacer(minLength: 0)
-            Picker("", selection: Binding(
-                get: { state.outputDeviceId },
-                set: { state.selectOutputDevice($0) }
-            )) {
-                ForEach(state.devices) { device in
-                    Text(device.name).tag(device.id)
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Text("音频输出")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer(minLength: 0)
+                Picker("", selection: Binding(
+                    get: { state.outputDeviceId },
+                    set: { state.selectOutputDevice($0) }
+                )) {
+                    ForEach(state.devices) { device in
+                        Text(device.name).tag(device.id)
+                    }
                 }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: 168)
             }
-            .labelsHidden()
-            .controlSize(.small)
-            .frame(maxWidth: 168)
+
+            // 用户最常踩的坑：选了扬声器，声音不会变成「电脑麦克风」
+            if let hint = outputHint {
+                Text(hint)
+                    .font(.system(size: 10))
+                    .foregroundStyle(Theme.textTertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
+    }
+
+    /// 输出的提示文案
+    private var outputHint: String? {
+        let hasVirtual = state.devices.contains { $0.isVirtual }
+        guard hasVirtual else {
+            return "没找到虚拟设备 —— 装 BlackHole 才能把手机麦克风变成电脑麦克风"
+        }
+        let selected = state.devices.first { $0.id == state.outputDeviceId }
+        guard let selected, !selected.isVirtual else { return nil }
+        return "当前选的是扬声器。要当麦克风用，请选 BlackHole 之类的虚拟设备"
     }
 
     // MARK: - 收音主按钮

@@ -43,12 +43,9 @@ final class AppState: ObservableObject {
 
     // MARK: - 动作
 
+    /// 服务端由 `AirMicServer.shared.startOnLaunch()` 在 App 启动时拉起，
+    /// 这里**不要**再 start 一遍（会撞端口）。
     func start() {
-        do {
-            try server.start()
-        } catch {
-            server.report(error: "AirMic 启动失败：\(error.localizedDescription)")
-        }
         refreshDevices()
     }
 

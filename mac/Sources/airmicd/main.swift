@@ -23,6 +23,7 @@ func usage() {
       airmicd pair-code            打印当前配对码
       airmicd devices              列出已配对设备
       airmicd config               打印当前配置（磁铁 / 预案）
+      airmicd audio-devices        列出系统音频输出设备
       airmicd tone [主机] [端口] [秒数]  发一段测试音（验证音频链路）
       airmicd simulate-app <名称>  模拟一次前台应用切换（测试预案自动切换）
     """)
@@ -81,6 +82,16 @@ case "config":
     for preset in config.presets {
         let bound = preset.appName ?? "（默认）"
         print("· \(preset.name)  绑定：\(bound)  磁贴：\(preset.tiles.count)")
+    }
+
+case "audio-devices":
+    // 列出系统音频输出设备（排查下拉框为空）
+    let list = AudioDeviceManager.outputDevices()
+    if list.isEmpty {
+        print("没有枚举到任何输出设备")
+    }
+    for device in list {
+        print("\(device.id)  \(device.name)\(device.isVirtual ? "  [虚拟]" : "")")
     }
 
 case "aactest":

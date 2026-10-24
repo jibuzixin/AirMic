@@ -360,6 +360,7 @@ public final class AirMicServer: ObservableObject {
         var notify = Message(type: Message.Kind.pairRequestReceived)
         notify.deviceName = info.deviceName
         client.send(notify)
+        Log.info("收到配对请求：\(info.displayName)")
     }
 
     private func handlePairCode(_ message: Message, client: ClientConnection) {

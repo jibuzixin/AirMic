@@ -54,6 +54,11 @@ public final class AirMicServer: ObservableObject {
     @Published public private(set) var stats: Stats = .empty
     /// 观察到的电脑前台应用集合（手机端配预案时列出来）
     @Published public private(set) var knownApps: [String] = []
+    /// 电脑端见过的所有应用（带 id，手机端拉走去绑预案）
+    @Published public private(set) var knownAppList: [KnownApp] = []
+
+    /// 菜单栏图标要不要显示铃铛（有待处理的配对请求时）
+    public var hasPendingPairRequest: Bool { !pendingRequests.isEmpty }
     /// 当前配对码（刷新后旧码立刻失效）
     @Published public private(set) var pairCodeValue: String = ""
     /// 配对码剩余有效秒数
@@ -262,8 +267,11 @@ public final class AirMicServer: ObservableObject {
     public func respondToPairing(deviceId: String, approved: Bool) {
         guard let index = pendingRequests.firstIndex(where: { $0.deviceId == deviceId }) else { return }
         let request = pendingRequests.remove(at: index)
-        let client = connectedClient
+        respond(to: request, approved: approved, client: connectedClient)
+    }
 
+    /// 真正处理「允许 / 拒绝」
+    private func respond(to request: PairingRequestInfo, approved: Bool, client: ClientConnection?) {
         if approved {
             let token = Self.makeToken()
             let device = PairedDevice(
@@ -274,7 +282,7 @@ public final class AirMicServer: ObservableObject {
                 pairedAt: Date()
             )
             try? pairingStore.remember(device)
-            pairedDevices = pairingStore.allDevices()
+            onMain { self.pairedDevices = self.pairingStore.allDevices() }
             var response = Message(type: Message.Kind.pairRespond)
             response.approved = true
             response.token = token
@@ -299,11 +307,26 @@ public final class AirMicServer: ObservableObject {
         case Message.Kind.pairCode:
             handlePairCode(message, client: client)
         case Message.Kind.hotkeyExecute:
-            if let combo = message.combo {
-                hotkeyExecutor.execute(combo: combo)
+            guard let combo = message.combo else { return }
+            // 没有辅助功能权限时 CGEvent 会被系统静默丢弃 —— 要明确告诉用户
+            if !HotkeyExecutor.hasAccessibilityPermission {
+                var failure = Message(type: "hotkey.error")
+                failure.reason = "电脑端没有「辅助功能」权限，快捷键发不出去。到「系统设置 → 隐私与安全性 → 辅助功能」里打开 AirMic"
+                client.send(failure)
+                Log.error("快捷键未执行：缺少辅助功能权限")
+                return
+            }
+            if !hotkeyExecutor.execute(combo: combo) {
+                var failure = Message(type: "hotkey.error")
+                failure.reason = "这个快捷键在电脑上执行失败了，检查一下按键设置"
+                client.send(failure)
             }
         case Message.Kind.configPush, Message.Kind.configUpdate:
             handleConfig(message, client: client)
+        case Message.Kind.appsRequest:
+            sendAppList(to: client)
+        case Message.Kind.appsCurrentRequest:
+            sendCurrentApp(to: client)
         case Message.Kind.micStateReport:
             let mode = MicMode(rawValue: message.mode ?? "idle") ?? .idle
             onMain { self.phoneMicMode = mode }
@@ -361,6 +384,11 @@ public final class AirMicServer: ObservableObject {
         notify.deviceName = info.deviceName
         client.send(notify)
         Log.info("收到配对请求：\(info.displayName)")
+
+        if autoApprovePairing {
+            // 开发模式：直接同意，不等请求进队列（否则会竞态）
+            respond(to: info, approved: true, client: client)
+        }
     }
 
     private func handlePairCode(_ message: Message, client: ClientConnection) {
@@ -414,16 +442,17 @@ public final class AirMicServer: ObservableObject {
             if !self.knownApps.contains(app.name) {
                 self.knownApps.append(app.name)
             }
-        }
-        if !knownApps.contains(app.name) {
-            var list = Message(type: "apps.list")
-            list.apps = knownApps
-            control.broadcast(list)
+            self.recordApp(app)
         }
         broadcastState()
 
         // 需求说明书 §4.4：绑了就切过去，没绑就切默认预案
+        let currentId = foregroundApp.bundleId.isEmpty ? foregroundApp.name : foregroundApp.bundleId
         let bound = config.presets.first { preset in
+            // 先按 id 匹配（重名靠 id 区分），再退回按名字
+            if let appId = preset.appId, !appId.isEmpty {
+                return appId == currentId
+            }
             guard let appName = preset.appName, !appName.isEmpty else { return false }
             return appName.caseInsensitiveCompare(app.name) == .orderedSame
                 || appName.caseInsensitiveCompare(app.bundleId) == .orderedSame
@@ -437,6 +466,47 @@ public final class AirMicServer: ObservableObject {
             onMain { self.activePreset = next }
             sendActivePreset(next, appName: app.name, fallback: isFallback)
         }
+    }
+
+    /// 记下这个应用（用户需求：电脑端记录每一次打开过的不同应用）
+    private func recordApp(_ app: ForegroundApp) {
+        // 编号优先用 bundle id；没有就用名字
+        let id = app.bundleId.isEmpty ? app.name : app.bundleId
+        if let index = knownAppList.firstIndex(where: { $0.id == id }) {
+            knownAppList[index].seenCount += 1
+            knownAppList[index].lastSeen = Date()
+            knownAppList[index].name = app.name
+        } else {
+            knownAppList.append(
+                KnownApp(
+                    id: id,
+                    name: app.name,
+                    bundleId: app.bundleId,
+                    seenCount: 1,
+                    lastSeen: Date()
+                )
+            )
+        }
+    }
+
+    /// 手机端来要应用列表
+    private func sendAppList(to client: ClientConnection?) {
+        var message = Message(type: Message.Kind.appsList)
+        message.appList = knownAppList
+        client?.send(message)
+    }
+
+    /// 手机端来要「当前前台应用」
+    private func sendCurrentApp(to client: ClientConnection?) {
+        var message = Message(type: Message.Kind.appsCurrent)
+        message.currentApp = KnownApp(
+            id: foregroundApp.bundleId.isEmpty ? foregroundApp.name : foregroundApp.bundleId,
+            name: foregroundApp.name,
+            bundleId: foregroundApp.bundleId,
+            seenCount: 1,
+            lastSeen: Date()
+        )
+        client?.send(message)
     }
 
     private func sendActivePreset(_ preset: Preset, appName: String, fallback: Bool) {

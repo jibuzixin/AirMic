@@ -17,10 +17,14 @@ export interface AirMicTransport {
   scan(): Promise<Device[]>
   /** 本机设备信息（id / 名字）—— 发消息时必须带 deviceId */
   getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }>
+  /** 申请麦克风权限；返回是否拿到了 */
+  requestMicPermission(): Promise<boolean>
+  /** 麦克风权限是否已经给了 */
+  hasMicPermission(): Promise<boolean>
   /** 把配对 token 存到原生侧（重连时自动带上） */
   saveToken(deviceId: string, token: string): Promise<void>
   /** 连上某台电脑 */
-  connect(target: { deviceId: string; host: string; port: number }): Promise<void>
+  connect(target: { deviceId: string; host: string; port: number; token?: string }): Promise<void>
   disconnect(): Promise<void>
   /** 发一条控制消息 */
   send(message: Record<string, unknown>): Promise<void>
@@ -41,6 +45,8 @@ interface AirMicNativePlugin {
   scan(): Promise<{ devices: Device[] }>
   getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }>
   saveToken(options: { deviceId: string; token: string }): Promise<void>
+  checkPermissions(): Promise<Record<string, string>>
+  requestPermissions(options: { permissions: string[] }): Promise<Record<string, string>>
   connect(options: { deviceId: string; host: string; port: number }): Promise<void>
   disconnect(): Promise<void>
   send(options: { payload: string }): Promise<void>
@@ -65,8 +71,24 @@ class NativeTransport implements AirMicTransport {
     await AirMicNative.saveToken({ deviceId, token })
   }
 
-  async connect(target: { deviceId: string; host: string; port: number }): Promise<void> {
+  async connect(target: {
+    deviceId: string
+    host: string
+    port: number
+    token?: string
+  }): Promise<void> {
     await AirMicNative.connect(target)
+  }
+
+  async requestMicPermission(): Promise<boolean> {
+    // 权限别名在插件的 @Permission 上声明（recordAudio → RECORD_AUDIO）
+    const result = await AirMicNative.requestPermissions({ permissions: ['recordAudio'] })
+    return result.recordAudio === 'granted'
+  }
+
+  async hasMicPermission(): Promise<boolean> {
+    const status = await AirMicNative.checkPermissions()
+    return status.recordAudio === 'granted'
   }
 
   async disconnect(): Promise<void> {
@@ -104,6 +126,14 @@ class LoopbackTransport implements AirMicTransport {
 
   async getDeviceInfo(): Promise<{ deviceId: string; deviceName: string }> {
     return { deviceId: 'dev-loopback', deviceName: '开发模式' }
+  }
+
+  async requestMicPermission(): Promise<boolean> {
+    return true
+  }
+
+  async hasMicPermission(): Promise<boolean> {
+    return true
   }
 
   async saveToken(): Promise<void> {

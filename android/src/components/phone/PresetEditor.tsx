@@ -45,7 +45,10 @@ export function PresetEditor({
 }) {
   const {
     magnets,
-    knownApps,
+    appList,
+    currentApp,
+    fetchAppList,
+    fetchCurrentApp,
     updatePreset,
     deletePreset,
     addMagnet,
@@ -164,19 +167,53 @@ export function PresetEditor({
             <div className="flex flex-wrap gap-2">
               <AppChip
                 label="不绑定"
-                active={preset.appName === null}
-                onClick={() => updatePreset(preset.id, { appName: null })}
+                active={!preset.appId && !preset.appName}
+                onClick={() => updatePreset(preset.id, { appName: null, appId: null })}
               />
-              {/* 绑定哪个电脑应用：列表来自电脑端上报的前台应用集合 */}
-              {knownApps.map((app) => (
+              {/* 应用列表来自电脑端（用户主动拉取，手机端本地缓存） */}
+              {appList.map((app) => (
                 <AppChip
-                  key={app}
-                  label={app}
-                  icon={appIcon(app)}
-                  active={preset.appName === app}
-                  onClick={() => updatePreset(preset.id, { appName: app })}
+                  key={app.id}
+                  label={app.name}
+                  icon={appIcon(app.name)}
+                  active={preset.appId === app.id}
+                  onClick={() => updatePreset(preset.id, { appName: app.name, appId: app.id })}
                 />
               ))}
+              {/* 当前应用：只显示，不进列表 */}
+              {currentApp && (
+                <AppChip
+                  label={`${currentApp.name}（当前）`}
+                  icon={appIcon(currentApp.name)}
+                  active={preset.appId === currentApp.id}
+                  onClick={() =>
+                    updatePreset(preset.id, {
+                      appName: currentApp.name,
+                      appId: currentApp.id,
+                    })
+                  }
+                />
+              )}
+            </div>
+
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={fetchAppList}
+                className="rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-1.5 text-[12px] text-text-secondary active:scale-[0.98]"
+              >
+                获取电脑应用列表
+              </button>
+              <button
+                type="button"
+                onClick={fetchCurrentApp}
+                className="rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-1.5 text-[12px] text-text-secondary active:scale-[0.98]"
+              >
+                获取当前应用
+              </button>
+              <span className="text-[11px] text-text-tertiary">
+                {appList.length > 0 ? `已记录 ${appList.length} 个应用` : '还没拉过列表'}
+              </span>
             </div>
           </Section>
 

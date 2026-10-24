@@ -33,6 +33,8 @@ final class AppState: ObservableObject {
     var pairCode: String { server.pairCodeValue }
     var activePresetName: String? { server.activePreset?.name }
     var foregroundAppName: String { server.foregroundApp.name }
+    /// 菜单栏图标：有待处理的配对请求时显示铃铛
+    var hasPendingPairRequest: Bool { server.hasPendingPairRequest }
     var outputDeviceId: String { server.config.outputDeviceId }
     var bufferMs: Int { server.config.bufferMs }
 
@@ -52,6 +54,25 @@ final class AppState: ObservableObject {
     /// 重新枚举音频输出设备
     func refreshDevices() {
         devices = AudioDeviceManager.outputDevices()
+        // 没选过、或者选的那个设备不见了 → 挑一个合理的默认值
+        let stillThere = devices.contains { $0.id == outputDeviceId }
+        if !stillThere {
+            // 优先选虚拟设备（BlackHole 之类）—— 那才是「当麦克风用」的目标
+            let preferred = devices.first { $0.isVirtual } ?? devices.first
+            if let preferred {
+                selectOutputDevice(preferred.id)
+            }
+        }
+    }
+
+    /// 电脑端有没有辅助功能权限（没有的话快捷键发不出去）
+    var hasAccessibilityPermission: Bool {
+        HotkeyExecutor.hasAccessibilityPermission
+    }
+
+    /// 请求辅助功能权限
+    func requestAccessibilityPermission() {
+        HotkeyExecutor.requestAccessibilityPermission()
     }
 
     /// 面板上的输出设备下拉

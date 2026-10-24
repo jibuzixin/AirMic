@@ -113,15 +113,30 @@ public class MicCapture {
             SAMPLE_RATE, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT);
         if (minBuffer <= 0) throw new IOException("设备不支持 48kHz 单声道录音");
 
-        audioRecord = new AudioRecord(
+        // 依次尝试几个录音源：MIC 最稳（有些机型上 VOICE_RECOGNITION 会拿到静音）
+        int[] sources = {
+            MediaRecorder.AudioSource.MIC,
             MediaRecorder.AudioSource.VOICE_RECOGNITION,
-            SAMPLE_RATE,
-            AudioFormat.CHANNEL_IN_MONO,
-            AudioFormat.ENCODING_PCM_16BIT,
-            minBuffer * 4
-        );
-        if (audioRecord.getState() != AudioRecord.STATE_INITIALIZED) {
-            throw new IOException("麦克风打开失败（权限被拒？）");
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+        };
+        IOException lastError = null;
+        for (int source : sources) {
+            AudioRecord record = new AudioRecord(
+                source,
+                SAMPLE_RATE,
+                AudioFormat.CHANNEL_IN_MONO,
+                AudioFormat.ENCODING_PCM_16BIT,
+                minBuffer * 4
+            );
+            if (record.getState() == AudioRecord.STATE_INITIALIZED) {
+                audioRecord = record;
+                break;
+            }
+            record.release();
+            lastError = new IOException("麦克风打开失败（权限被拒？）");
+        }
+        if (audioRecord == null) {
+            throw lastError != null ? lastError : new IOException("麦克风打开失败");
         }
         audioRecord.startRecording();
     }

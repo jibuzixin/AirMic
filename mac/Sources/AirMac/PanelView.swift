@@ -17,6 +17,10 @@ struct PanelView: View {
                 pairingRequestCard
             }
 
+            if !state.hasAccessibilityPermission {
+                accessibilityHint
+            }
+
             VStack(alignment: .leading, spacing: 12) {
                 pairCodeRow
                 outputDeviceRow
@@ -98,6 +102,30 @@ struct PanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 10)
+    }
+
+    // MARK: - 辅助功能权限
+
+    /// 没有辅助功能权限，手机点磁贴不会有反应 —— 明确告诉用户去哪儿开
+    private var accessibilityHint: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.amber)
+            Text("快捷键需要「辅助功能」权限")
+                .font(.system(size: 11))
+                .foregroundStyle(Theme.textSecondary)
+            Spacer(minLength: 0)
+            Button("去授权") {
+                state.requestAccessibilityPermission()
+            }
+            .buttonStyle(.plain)
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(Theme.amber)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(Theme.surface2)
     }
 
     // MARK: - 配对码

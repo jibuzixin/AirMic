@@ -38,7 +38,7 @@ function flag(name, fallback) {
 }
 
 const host = flag('host', '127.0.0.1')
-const port = Number(flag('port', 47471))
+const port = Number(flag('port', process.env.AIRMIC_PORT ?? 47471))
 const deviceName = flag('name', 'Fake Phone')
 // 设备 id 要稳定（真实手机端也是固定 id），否则 token 对不上
 const saved = readState()

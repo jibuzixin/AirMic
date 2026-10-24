@@ -6,6 +6,7 @@ import android.net.wifi.WifiManager;
 import android.util.Log;
 
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
@@ -152,7 +153,9 @@ public class AirMicPlugin extends Plugin {
                 hello.put("deviceId", deviceId);
                 hello.put("deviceName", deviceName);
                 hello.put("model", deviceName);
-                String effectiveToken = token != null ? token : TokenStore.get(getContext(), targetId);
+                // ⚠️ token 必须存在**手机自己**的 deviceId 下 ——
+                // 之前错存成「对方电脑的 id」，下次重连取不到 → 每次都要重新配对
+                String effectiveToken = token != null ? token : TokenStore.get(getContext(), deviceId);
                 if (effectiveToken != null) hello.put("token", effectiveToken);
 
                 control.send((JSONObject) hello);
@@ -199,9 +202,19 @@ public class AirMicPlugin extends Plugin {
             call.reject("还没连上电脑");
             return;
         }
+        // 没有麦克风权限就直接说清楚，别等下崩在服务里
+        if (!hasRecordAudioPermission()) {
+            call.reject("还没有麦克风权限，请在系统设置里给 AirMic 开「麦克风」权限");
+            return;
+        }
         // 采集跑在前台服务里：切后台 / 锁屏都不会断
         AirmicMicService.start(getContext(), currentHost, MicCapture.AUDIO_PORT, mode);
         call.resolve();
+    }
+
+    private boolean hasRecordAudioPermission() {
+        // 用插件自己的权限别名查（别名在 @Permission 上声明）
+        return getPermissionState("recordAudio") == PermissionState.GRANTED;
     }
 
     @PluginMethod
@@ -234,13 +247,13 @@ public class AirMicPlugin extends Plugin {
 
     @PluginMethod
     public void saveToken(PluginCall call) {
-        String id = call.getString("deviceId");
         String token = call.getString("token");
-        if (id == null || token == null) {
-            call.reject("缺少设备 id 或 token");
+        if (token == null) {
+            call.reject("缺少 token");
             return;
         }
-        TokenStore.set(getContext(), id, token);
+        // 统一存在手机自己的 deviceId 下
+        TokenStore.set(getContext(), deviceId, token);
         call.resolve();
     }
 

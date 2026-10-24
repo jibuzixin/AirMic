@@ -43,6 +43,9 @@ export function MicPage({
     endPushToTalk,
     micBlockedNotice,
     dismissMicBlocked,
+    fireMagnet,
+    remoteError,
+    dismissRemoteError,
   } = useAirmic()
   const preset = useActivePreset()
   const level = useLevel(micMode !== 'idle')
@@ -77,6 +80,17 @@ export function MicPage({
       if (toastTimer.current) window.clearTimeout(toastTimer.current)
     }
   }, [])
+
+  /**
+   * 电脑端返回的错误（比如快捷键没有辅助功能权限）——
+   * 直接显示出来，不然用户点了没反应又不知道原因。
+   */
+  useEffect(() => {
+    if (!remoteError) return
+    showToast(remoteError)
+    const timer = window.setTimeout(dismissRemoteError, 3000)
+    return () => window.clearTimeout(timer)
+  }, [dismissRemoteError, remoteError, showToast])
 
   /**
    * 电脑端没有在收音时，手机开始收音要**震动 + 提示**
@@ -149,9 +163,11 @@ export function MicPage({
 
   const handleFire = useCallback(
     (magnet: HotkeyMagnet) => {
+      // ⚠️ 必须真的发给电脑 —— 原型里这里只弹了个 toast，什么都没发
+      fireMagnet(magnet)
       showToast(`已发送 ${magnetKeys(magnet)}`)
     },
-    [showToast],
+    [fireMagnet, showToast],
   )
 
   const handleUnbound = useCallback(

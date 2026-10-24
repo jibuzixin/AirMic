@@ -11,6 +11,15 @@ public final class AudioReceiver {
 
     /// 音频端口（与控制端口分开）
     public static let defaultPort: UInt16 = 47472
+
+    /// 实际端口：跟随控制端口 +1，可用 `AIRMIC_PORT` 覆盖
+    public static var resolvedPort: UInt16 {
+        if let raw = ProcessInfo.processInfo.environment["AIRMIC_PORT"],
+           let port = UInt16(raw), port > 0 {
+            return port &+ 1
+        }
+        return defaultPort
+    }
     /// 包头长度
     static let headerBytes = 6
 
@@ -38,7 +47,7 @@ public final class AudioReceiver {
     }
 
     /// UDP 服务端要用 NWListener —— NWConnection 只能主动连出去
-    public func start(port: UInt16 = AudioReceiver.defaultPort) throws {
+    public func start(port: UInt16 = AudioReceiver.resolvedPort) throws {
         stop()
         let parameters = NWParameters.udp
         parameters.allowLocalEndpointReuse = true

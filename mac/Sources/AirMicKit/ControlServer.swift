@@ -106,9 +106,23 @@ public final class ControlServer {
     /// 默认端口：47471（「AIRM」的字母位）。用固定端口方便开发期工具直连。
     public static let defaultPort: UInt16 = 47471
 
+    /// 实际端口：可以用 `AIRMIC_PORT` 环境变量改 ——
+    /// 同一台机器上跑两个实例（或者局域网里有两台电脑）时避免抢端口。
+    public static var resolvedPort: UInt16 {
+        if let raw = ProcessInfo.processInfo.environment["AIRMIC_PORT"],
+           let port = UInt16(raw), port > 0 {
+            return port
+        }
+        return defaultPort
+    }
+
     private let listenPort: NWEndpoint.Port
 
-    public init(serviceName: String, txtRecord: [String: String], port: UInt16 = ControlServer.defaultPort) {
+    public init(
+        serviceName: String,
+        txtRecord: [String: String],
+        port: UInt16 = ControlServer.resolvedPort
+    ) {
         self.serviceName = serviceName
         self.txtRecord = txtRecord
         self.listenPort = NWEndpoint.Port(rawValue: port) ?? .any

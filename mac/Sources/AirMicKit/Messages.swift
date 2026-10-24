@@ -53,6 +53,10 @@ public struct Message: Codable, Equatable {
 
     // 电脑端观察到的前台应用集合（手机端配预案时要用）
     public var apps: [String]?
+    /// 应用列表（带 id，重名靠 id 区分）
+    public var appList: [KnownApp]?
+    /// 当前前台应用
+    public var currentApp: KnownApp?
 
     public init(type: String) {
 
@@ -83,6 +87,11 @@ public struct Message: Codable, Equatable {
 
         static let hotkeyExecute = "hotkey.execute"
         static let micStateReport = "mic.state.report"
+
+        static let appsRequest = "apps.request"
+        static let appsList = "apps.list"
+        static let appsCurrentRequest = "apps.current.request"
+        static let appsCurrent = "apps.current"
     }
 }
 

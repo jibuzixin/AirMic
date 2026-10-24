@@ -20,8 +20,14 @@ struct AirMacApp: App {
         MenuBarExtra {
             PanelView(state: state)
         } label: {
-            Image(systemName: state.isRecording ? "mic.fill" : "mic")
-                .foregroundStyle(state.isRecording ? Theme.recording : Theme.textPrimary)
+            // 有配对请求 → 铃铛；正在收音 → 麦克风
+            if state.hasPendingPairRequest {
+                Image(systemName: "bell.badge.fill")
+                    .foregroundStyle(Theme.amber)
+            } else {
+                Image(systemName: state.isRecording ? "mic.fill" : "mic")
+                    .foregroundStyle(state.isRecording ? Theme.recording : Theme.textPrimary)
+            }
         }
         .menuBarExtraStyle(.window)
     }

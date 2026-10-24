@@ -28,6 +28,8 @@ export type Preset = {
   name: string
   /** 绑定的电脑前台应用名；null = 默认预案 */
   appName: string | null
+  /** 绑定的应用 id（重名靠它区分）；null = 默认预案 */
+  appId?: string | null
   /** 麦克风按钮「按下」时执行的磁铁 id */
   micPressId: string | null
   /** 麦克风按钮「松开」时执行的磁铁 id */
@@ -36,6 +38,21 @@ export type Preset = {
   tiles: Tile[]
   /** 是否为默认预案 */
   isDefault?: boolean
+}
+
+/**
+ * 电脑端见过的一个应用
+ *
+ * 用户需求：电脑端记录每一次打开过的不同应用的名字和编号；
+ * 重名时用编号区分。手机端可以拉这个列表去绑定预案。
+ */
+export type KnownApp = {
+  /** 稳定编号（bundle id 优先） */
+  id: string
+  name: string
+  bundleId: string
+  /** 见过几次 */
+  seenCount: number
 }
 
 /** 扫描到的电脑 */
@@ -106,14 +123,21 @@ export const SEED_MAGNETS: HotkeyMagnet[] = [
   { id: 'm-link', label: '链接', icon: 'Link', modifiers: ['cmd'], key: 'k', mouse: null },
 ]
 
+/**
+ * 默认预案
+ *
+ * ⚠️ 麦克风按钮的「按下 / 松开」**默认不绑任何按键**（用户明确要求）。
+ * 用户想用的话自己去预案编辑里挑磁铁。
+ */
 export const SEED_PRESETS: Preset[] = [
   {
     id: 'p-default',
     name: '默认预案',
     appName: null,
+    appId: null,
     isDefault: true,
-    micPressId: 'm-voice',
-    micReleaseId: 'm-send',
+    micPressId: null,
+    micReleaseId: null,
     tiles: [
       { id: 't1', magnetId: 'm-voice' },
       { id: 't2', magnetId: 'm-send' },

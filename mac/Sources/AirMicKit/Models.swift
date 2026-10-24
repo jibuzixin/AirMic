@@ -123,6 +123,34 @@ public enum MouseKey {
 
 // MARK: - 预案
 
+/// 电脑端见过的一个应用
+///
+/// 用户需求：电脑端记录**每一次打开过的不同应用**的名字和编号；
+/// 重名时用 id 区分。手机端可以拉这个列表去绑定预案。
+public struct KnownApp: Codable, Equatable, Identifiable, Hashable {
+    /// 稳定编号（bundle id 优先，否则用名称）
+    public var id: String
+    /// 应用名
+    public var name: String
+    /// bundle id
+    public var bundleId: String
+    /// 见过几次
+    public var seenCount: Int
+    /// 最后一次见到的时间
+    public var lastSeen: Date
+
+    public init(id: String, name: String, bundleId: String, seenCount: Int, lastSeen: Date) {
+        self.id = id
+        self.name = name
+        self.bundleId = bundleId
+        self.seenCount = seenCount
+        self.lastSeen = lastSeen
+    }
+
+    /// 显示用：重名时带编号
+    public var displayName: String { name }
+}
+
 /// 磁贴 = 对某个磁铁的引用
 public struct Tile: Codable, Equatable, Identifiable, Hashable {
     public var id: String
@@ -143,6 +171,8 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
     public var name: String
     /// 绑定的电脑前台应用名；nil = 默认预案
     public var appName: String?
+    /// 绑定的应用 id（重名靠它区分）；nil = 默认预案
+    public var appId: String?
     /// 麦克风按钮「按下」时执行的磁铁 id
     public var micPressId: String?
     /// 麦克风按钮「松开」时执行的磁铁 id
@@ -155,6 +185,7 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
         id: String,
         name: String,
         appName: String? = nil,
+        appId: String? = nil,
         micPressId: String? = nil,
         micReleaseId: String? = nil,
         tiles: [Tile] = [],
@@ -163,6 +194,7 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
         self.id = id
         self.name = name
         self.appName = appName
+        self.appId = appId
         self.micPressId = micPressId
         self.micReleaseId = micReleaseId
         self.tiles = tiles

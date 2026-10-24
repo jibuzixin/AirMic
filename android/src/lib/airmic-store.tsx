@@ -13,11 +13,12 @@ import {
   SEED_PRESETS,
   type Device,
   type ForegroundApp,
+  type KnownApp,
   type Preset,
   type Stats,
 } from './airmic-data'
 import { EMPTY_STATS } from './airmic-data'
-import type { HotkeyMagnet } from './hotkey'
+import { magnetCombo, type HotkeyMagnet } from './hotkey'
 import { createTransport, type AirMicTransport } from './transport'
 
 /**
@@ -63,6 +64,11 @@ type Persisted = {
   deviceName: string | null
   magnets: HotkeyMagnet[]
   presets: Preset[]
+  /** 电脑应用列表（下次打开直接用，不用再拉） */
+  appList: KnownApp[]
+  /** 上次连的电脑地址（下次打开自动连） */
+  deviceHost: string | null
+  devicePort: number | null
 }
 
 function loadPersisted(): Persisted {
@@ -72,6 +78,9 @@ function loadPersisted(): Persisted {
     deviceName: null,
     magnets: SEED_MAGNETS,
     presets: SEED_PRESETS,
+    appList: [],
+    deviceHost: null,
+    devicePort: null,
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -83,6 +92,9 @@ function loadPersisted(): Persisted {
       deviceName: parsed.deviceName ?? null,
       magnets: parsed.magnets?.length ? parsed.magnets : SEED_MAGNETS,
       presets: parsed.presets?.length ? parsed.presets : SEED_PRESETS,
+      appList: parsed.appList ?? [],
+      deviceHost: parsed.deviceHost ?? null,
+      devicePort: parsed.devicePort ?? null,
     }
   } catch {
     return fallback
@@ -117,6 +129,12 @@ export type AirmicStore = {
   micBlockedNotice: string | null
   /** 电脑端观察到的前台应用集合（配预案时列出来） */
   knownApps: string[]
+  /** 拉下来的电脑应用列表（手机端保存，可重复拉取覆盖） */
+  appList: KnownApp[]
+  /** 电脑当前的前台应用（只用于显示，不保存） */
+  currentApp: KnownApp | null
+  /** 电脑端返回的错误（比如快捷键没有权限） */
+  remoteError: string | null
   connectionError: string | null
 
   /* --- 动作 --- */
@@ -151,6 +169,17 @@ export type AirmicStore = {
   deleteMagnet: (id: string) => void
 
   dismissMicBlocked: () => void
+
+  /* --- 快捷键 --- */
+  /** 点磁贴：让电脑执行这个磁铁的组合键 */
+  fireMagnet: (magnet: HotkeyMagnet) => void
+  dismissRemoteError: () => void
+
+  /* --- 预案绑定的应用 --- */
+  /** 拉取电脑端记录过的所有应用（覆盖本地缓存） */
+  fetchAppList: () => void
+  /** 取电脑当前的前台应用（不保存） */
+  fetchCurrentApp: () => void
 }
 
 const AirmicContext = createContext<AirmicStore | null>(null)
@@ -187,6 +216,12 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [presetNotice, setPresetNotice] = useState<PresetNotice | null>(null)
   const [micBlockedNotice, setMicBlockedNotice] = useState<string | null>(null)
   const [knownApps, setKnownApps] = useState<string[]>([])
+  /** 电脑应用列表（本地缓存，可重新拉取覆盖） */
+  const [appList, setAppList] = useState<KnownApp[]>(persisted.appList)
+  /** 电脑当前应用（不保存） */
+  const [currentApp, setCurrentApp] = useState<KnownApp | null>(null)
+  /** 电脑端返回的错误 */
+  const [remoteError, setRemoteError] = useState<string | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const noticeSeq = useRef(0)
   /** 本机设备信息（原生侧生成，JS 侧发消息时必须带同一个 deviceId） */
@@ -201,6 +236,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         deviceName: persisted.deviceName,
         magnets,
         presets,
+        appList,
+        deviceHost: persisted.deviceHost,
+        devicePort: persisted.devicePort,
         ...patch,
       }
       try {
@@ -209,7 +247,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         /* 存不下就算了，不影响本次会话 */
       }
     },
-    [persisted, magnets, presets],
+    [appList, magnets, persisted, presets],
   )
 
   const send = useCallback(
@@ -226,6 +264,24 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     },
     [send],
   )
+
+  /* ---------- 启动时自动连上上次的电脑 ---------- */
+  //
+  // 需求：配对一次成功后，下次打开**直接进麦克风页**，不用再点一遍。
+  useEffect(() => {
+    if (!persisted.token || !persisted.deviceHost) return
+    void transport
+      .connect({
+        deviceId: persisted.deviceId ?? 'saved',
+        host: persisted.deviceHost,
+        port: persisted.devicePort ?? 47471,
+        token: persisted.token ?? undefined,
+      })
+      .catch(() => {
+        /* 连不上就回到设备页，让用户手动刷新 */
+      })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   /* ---------- 本机设备信息 ---------- */
   useEffect(() => {
@@ -246,6 +302,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           setPaired(!required)
           if (!required) {
             setConnectionError(null)
+            // 连上了就把配置推给电脑：磁贴的键位在电脑那边才有效
+            pushConfig(magnets, presets)
           }
           if (message.server) applyServerState(message.server)
           break
@@ -284,8 +342,21 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           })
           break
         }
-        case 'apps.list':
-          if (Array.isArray(message.apps)) setKnownApps(message.apps)
+        case 'apps.list': {
+          // 新协议：带 id 的完整列表
+          if (Array.isArray(message.appList)) {
+            setAppList(message.appList)
+            persist({ appList: message.appList })
+          } else if (Array.isArray(message.apps)) {
+            setKnownApps(message.apps)
+          }
+          break
+        }
+        case 'apps.current':
+          if (message.currentApp) setCurrentApp(message.currentApp)
+          break
+        case 'hotkey.error':
+          setRemoteError(message.reason ?? '电脑端执行失败了')
           break
         case 'stats':
           if (message.stats) {
@@ -366,6 +437,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           deviceId: device.id,
           host: device.host ?? '',
           port: device.port ?? 47471,
+          token: persisted.token ?? undefined,
         })
         .then(() => {
           send({
@@ -420,7 +492,12 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         .connect({ deviceId: device.id, host: device.host ?? '', port: device.port ?? 47471 })
         .then(() => {
           setPairedDevice(device)
-          persist({ deviceId: device.id, deviceName: device.name })
+          persist({
+            deviceId: device.id,
+            deviceName: device.name,
+            deviceHost: device.host ?? null,
+            devicePort: device.port ?? null,
+          })
         })
         .catch((error: Error) => {
           setConnectionError(error.message || '连接失败，确认电脑端还在运行')
@@ -471,9 +548,24 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   /* ---------- 麦克风按钮双语义 ---------- */
   const beginCapture = useCallback(
-    (mode: 'continuous' | 'ptt') => {
+    async (mode: 'continuous' | 'ptt') => {
+      // 没有麦克风权限就别硬来 —— 直接告诉用户要开哪个权限
+      let granted = await transport.hasMicPermission()
+      if (!granted) {
+        granted = await transport.requestMicPermission()
+      }
+      if (!granted) {
+        setMicBlockedNotice('需要「麦克风」权限才能收音，去系统设置里给 AirMic 开一下')
+        return false
+      }
       send({ type: 'mic.state.report', mode })
-      void transport.startMic(mode)
+      try {
+        await transport.startMic(mode)
+      } catch (error: any) {
+        setMicBlockedNotice(error?.message || '麦克风启动失败')
+        return false
+      }
+      return true
     },
     [send, transport],
   )
@@ -505,7 +597,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         return 'idle'
       }
       warnIfServerIdle()
-      beginCapture('continuous')
+      void beginCapture('continuous')
       return 'continuous'
     })
   }, [beginCapture, stopCapture, warnIfServerIdle])
@@ -513,7 +605,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const startPushToTalk = useCallback(() => {
     warnIfServerIdle()
     setMicMode('ptt')
-    beginCapture('ptt')
+    void beginCapture('ptt')
   }, [beginCapture, warnIfServerIdle])
 
   const endPushToTalk = useCallback(() => {
@@ -522,6 +614,31 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   }, [stopCapture])
 
   const dismissMicBlocked = useCallback(() => setMicBlockedNotice(null), [])
+  const dismissRemoteError = useCallback(() => setRemoteError(null), [])
+
+  /* ---------- 快捷键 ---------- */
+
+  /** 点磁贴：把组合键发给电脑执行 */
+  const fireMagnet = useCallback(
+    (magnet: HotkeyMagnet) => {
+      const combo = magnetCombo(magnet)
+      if (combo.length === 0) return
+      send({ type: 'hotkey.execute', combo })
+    },
+    [send],
+  )
+
+  /* ---------- 预案绑定的应用 ---------- */
+
+  /** 拉取电脑端记录过的所有应用（覆盖本地缓存） */
+  const fetchAppList = useCallback(() => {
+    send({ type: 'apps.request' })
+  }, [send])
+
+  /** 取电脑当前的前台应用（不保存） */
+  const fetchCurrentApp = useCallback(() => {
+    send({ type: 'apps.current.request' })
+  }, [send])
 
   /* ---------- 预案管理 ---------- */
   const createPreset = useCallback(
@@ -630,6 +747,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       presetNotice,
       micBlockedNotice,
       knownApps,
+      appList,
+      currentApp,
+      remoteError,
       connectionError,
       startScan,
       requestPair,
@@ -656,6 +776,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       updateMagnet,
       deleteMagnet,
       dismissMicBlocked,
+      fireMagnet,
+      dismissRemoteError,
+      fetchAppList,
+      fetchCurrentApp,
     }),
     [
       paired,
@@ -678,6 +802,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       presetNotice,
       micBlockedNotice,
       knownApps,
+      appList,
+      currentApp,
+      remoteError,
       connectionError,
       startScan,
       requestPair,
@@ -704,6 +831,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       updateMagnet,
       deleteMagnet,
       dismissMicBlocked,
+      fireMagnet,
+      dismissRemoteError,
+      fetchAppList,
+      fetchCurrentApp,
     ],
   )
 

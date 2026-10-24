@@ -49,6 +49,20 @@ public class AirmicMicService extends Service {
         String mode = intent.getStringExtra(EXTRA_MODE);
         if (mode == null) mode = "continuous";
 
+        // ⚠️ 必须**先** startForeground 再做别的 ——
+        // 否则初始化失败时会「5 秒内没进前台」被系统杀掉，表现为点一下就闪退。
+        // Android 14+：声明了 foregroundServiceType 就必须带类型参数，
+        // 否则 startForeground 会抛 IllegalStateException（表现为一点就闪退）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(mode),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+            );
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification(mode));
+        }
+
         if (host == null) {
             Log.w(TAG, "没有目标地址，停止服务");
             stopSelf();
@@ -62,8 +76,6 @@ public class AirmicMicService extends Service {
             stopSelf();
             return START_NOT_STICKY;
         }
-
-        startForeground(NOTIFICATION_ID, buildNotification(mode));
         // 被系统杀掉后不自动重启（用户没在说话就别偷偷录音）
         return START_NOT_STICKY;
     }

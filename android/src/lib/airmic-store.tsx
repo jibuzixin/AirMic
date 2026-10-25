@@ -19,7 +19,7 @@ import {
   type Stats,
 } from './airmic-data'
 import { EMPTY_STATS } from './airmic-data'
-import { magnetCombo, magnetIsText, type HotkeyMagnet } from './hotkey'
+import { magnetAction, type HotkeyMagnet, type MagnetAction } from './hotkey'
 import { vibrate, type HapticKind, type HapticStrength } from './haptics'
 import { createTransport, type AirMicTransport } from './transport'
 
@@ -32,16 +32,6 @@ import { createTransport, type AirMicTransport } from './transport'
  */
 
 export type MicMode = 'idle' | 'continuous' | 'ptt'
-
-/**
- * 磁片能触发的两种动作
- *
- * - `key`：按一组组合键（普通快捷键磁片）
- * - `text`：让电脑粘贴一段文字（文本磁片）
- */
-export type MagnetAction =
-  | { kind: 'key'; combo: string[] }
-  | { kind: 'text'; text: string }
 
 /** 外观：跟随系统 / 浅色 / 深色 */
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -967,22 +957,27 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     }
   }, [activePresetId, groups, magnets, presets])
 
+  /** 把解析好的动作发给电脑 */
+  const sendAction = useCallback(
+    (action: MagnetAction) => {
+      if (action.kind === 'text') {
+        send({ type: 'text.paste', text: action.text })
+      } else {
+        send({ type: 'hotkey.execute', combo: action.combo })
+      }
+    },
+    [send],
+  )
+
   /**
    * 点按语义：开 / 关各触发一次（按下 → 抬起）
    */
   const fireTap = useCallback(
     (magnet: HotkeyMagnet | null) => {
-      if (!magnet) return
-      // 文本磁片：让电脑把这段文字粘贴出来
-      if (magnetIsText(magnet)) {
-        send({ type: 'text.paste', text: magnet.text })
-        return
-      }
-      const combo = magnetCombo(magnet)
-      if (combo.length === 0) return
-      send({ type: 'hotkey.execute', combo })
+      const action = magnetAction(magnet)
+      if (action) sendAction(action)
     },
-    [send],
+    [sendAction],
   )
 
   const toggleContinuous = useCallback(() => {
@@ -1017,33 +1012,28 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
        *   - 它排在**之后** → 松手后跟着其它步骤一起依次执行
        * 这样组内的先后顺序不会被打乱。
        */
-      const actions: MagnetAction[] = []
-      for (const magnetId of binding.group.steps) {
-        const magnet = magnets.find((m) => m.id === magnetId)
-        if (!magnet) continue
-        if (magnetIsText(magnet)) {
-          if (magnet.text) actions.push({ kind: 'text', text: magnet.text })
-          continue
-        }
-        const combo = magnetCombo(magnet)
-        if (combo.length > 0) actions.push({ kind: 'key', combo })
-      }
+      const actions = binding.group.steps
+        .map((magnetId) => magnets.find((m) => m.id === magnetId))
+        .map(magnetAction)
+        .filter((action): action is MagnetAction => action !== null)
 
-      const holdIndex = actions.findIndex((a) => a.kind === 'key')
+      const holdIndex = actions.findIndex((action) => action.kind === 'key')
       if (holdIndex === -1) {
-        // 全是文本磁片：没有能按住的那一步，按下就全部粘贴出来
+        // 全是文本磁片：没有能按住的那一步，按下后按组间隔依次粘贴
+        let delay = 0
         for (const action of actions) {
-          if (action.kind === 'text') {
-            send({ type: 'text.paste', text: action.text })
+          if (delay === 0) {
+            sendAction(action)
+          } else {
+            holdReleaseTimers.current.push(
+              window.setTimeout(() => sendAction(action), delay),
+            )
           }
+          delay += Math.max(0, binding.group.intervalSeconds) * 1000
         }
       } else {
         // 按住之前的那几步（只能是文本）先粘贴出来
-        for (const action of actions.slice(0, holdIndex)) {
-          if (action.kind === 'text') {
-            send({ type: 'text.paste', text: action.text })
-          }
-        }
+        actions.slice(0, holdIndex).forEach(sendAction)
         const held = actions[holdIndex]
         if (held.kind === 'key') {
           heldComboRef.current = held.combo
@@ -1055,22 +1045,26 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         }
       }
     } else if (binding.magnet) {
-      // 单个磁片：文本磁片按下就粘贴出来
-      if (magnetIsText(binding.magnet)) {
-        if (binding.magnet.text) {
-          send({ type: 'text.paste', text: binding.magnet.text })
-        }
-      } else {
-        const combo = magnetCombo(binding.magnet)
-        if (combo.length > 0) {
-          heldComboRef.current = combo
-          send({ type: 'hotkey.down', combo })
-        }
+      const action = magnetAction(binding.magnet)
+      if (action?.kind === 'text') {
+        // 文本磁片没有「按住」语义，按下就粘贴
+        sendAction(action)
+      } else if (action?.kind === 'key') {
+        heldComboRef.current = action.combo
+        send({ type: 'hotkey.down', combo: action.combo })
       }
     }
     setMicMode('ptt')
     void beginCapture('ptt')
-  }, [beginCapture, magnets, micMode, presetHoldBinding, send, warnIfServerIdle])
+  }, [
+    beginCapture,
+    magnets,
+    micMode,
+    presetHoldBinding,
+    send,
+    sendAction,
+    warnIfServerIdle,
+  ])
 
   const endPushToTalk = useCallback(() => {
     // ⚠️ 不管当前状态是不是 ptt，只要按下过组合键就必须松开 ——
@@ -1086,13 +1080,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       let delay = pending.intervalMs
       for (const action of pending.steps) {
         holdReleaseTimers.current.push(
-          window.setTimeout(() => {
-            if (action.kind === 'text') {
-              send({ type: 'text.paste', text: action.text })
-            } else {
-              send({ type: 'hotkey.execute', combo: action.combo })
-            }
-          }, delay),
+          window.setTimeout(() => sendAction(action), delay),
         )
         delay += pending.intervalMs
       }
@@ -1101,7 +1089,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setMicMode('idle')
       stopCapture()
     }
-  }, [micMode, send, stopCapture])
+  }, [micMode, send, sendAction, stopCapture])
 
   /** 静默自动关麦 */
   useEffect(() => {
@@ -1132,16 +1120,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
    */
   const holdTileMagnet = useCallback(
     (magnet: HotkeyMagnet) => {
-      if (magnetIsText(magnet)) {
-        if (magnet.text) send({ type: 'text.paste', text: magnet.text })
+      const action = magnetAction(magnet)
+      if (!action) return
+      if (action.kind === 'text') {
+        sendAction(action)
         return
       }
-      const combo = magnetCombo(magnet)
-      if (combo.length === 0) return
-      heldTileComboRef.current = combo
-      send({ type: 'hotkey.down', combo })
+      heldTileComboRef.current = action.combo
+      send({ type: 'hotkey.down', combo: action.combo })
     },
-    [send],
+    [send, sendAction],
   )
 
   const releaseTileMagnet = useCallback(() => {
@@ -1154,16 +1142,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   /** 点磁贴：把组合键发给电脑执行 */
   const fireMagnet = useCallback(
     (magnet: HotkeyMagnet) => {
-      // 文本磁片：让电脑把这段文字粘贴出来
-      if (magnetIsText(magnet)) {
-        send({ type: 'text.paste', text: magnet.text })
-        return
-      }
-      const combo = magnetCombo(magnet)
-      if (combo.length === 0) return
-      send({ type: 'hotkey.execute', combo })
+      const action = magnetAction(magnet)
+      if (action) sendAction(action)
     },
-    [send],
+    [sendAction],
   )
 
   /* ---------- 预案绑定的应用 ---------- */
@@ -1351,25 +1333,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       let delay = 0
       for (const magnetId of group.steps) {
         const magnet = magnets.find((m) => m.id === magnetId)
-        if (!magnet) continue
-        // 文本磁片：让电脑把这段文字粘贴出来
-        if (magnetIsText(magnet)) {
-          const text = magnet.text
-          if (!text) continue
-          groupTimers.current.push(
-            window.setTimeout(() => {
-              send({ type: 'text.paste', text })
-            }, delay),
-          )
-          delay += Math.max(0, group.intervalSeconds) * 1000
-          continue
-        }
-        const combo = magnetCombo(magnet)
-        if (combo.length === 0) continue
+        const action = magnetAction(magnet)
+        if (!action) continue
         groupTimers.current.push(
-          window.setTimeout(() => {
-            send({ type: 'hotkey.execute', combo })
-          }, delay),
+          window.setTimeout(() => sendAction(action), delay),
         )
         delay += Math.max(0, group.intervalSeconds) * 1000
       }
@@ -1384,7 +1351,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         )
       }
     },
-    [magnets, send],
+    [magnets, sendAction],
   )
 
   const store = useMemo<AirmicStore>(

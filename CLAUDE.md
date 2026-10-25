@@ -167,9 +167,11 @@ airmic/
 磁片有两种：`text` 非空 = **文本磁片**（存一段提前编辑好的文字），否则是快捷键磁片。
 
 - 手机端发 `text.paste`；电脑端 `TextPaster` 把文字写入剪贴板 → 激活前台应用 → 发 ⌘V
-  → 1 秒后（剪贴板仍是这段文字时）还原用户原来的剪贴板。
+  → 1.2 秒后（剪贴板仍是这段文字时）还原用户原来的剪贴板。
+- 连续多段文本只保留**第一段粘贴前**的快照，只有最后一次粘贴的计时器负责还原。
 - 用剪贴板而不用 Unicode 注入：`CGEvent.keyboardSetUnicodeString` 会被 Electron / Flutter /
   远程桌面等直接丢掉；⌘V 是所有应用都认的路径。
+- 执行类消息（快捷键 / 文本）统一派发到主线程，保证磁片组里「文本 → 按键」的顺序不乱。
 - 没有键可以「按住」，所以文本磁片在长按位置就是**按下时粘贴一次**。
   磁片组绑到长按时，组里**第一个有组合键的步骤**才是按住的那一个。
 
@@ -220,6 +222,7 @@ cd mac
 ./.build/debug/airmicd loopback-test        # 写 440Hz 进 BlackHole 再从输入读回来
 ./.build/debug/airmicd tone 127.0.0.1 47472 3   # 发测试音（配合 --audio）
 ./.build/debug/airmicd aactest / aacgap     # 编解码自测 / 重启恢复测试
+./.build/debug/airmicd clipboard-test       # 文本磁片：剪贴板快照/还原自检（私有粘贴板）
 ./.build/debug/airmicd keycode a t space    # 查虚拟键码
 ```
 

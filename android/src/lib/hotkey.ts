@@ -231,3 +231,34 @@ export function magnetIsBound(magnet: HotkeyMagnet | null | undefined): boolean 
   if (!magnet) return false
   return magnetIsText(magnet) || magnetHasKey(magnet)
 }
+
+/* ---------- 可执行动作 ---------- */
+
+/**
+ * 磁片能触发的两种动作
+ *
+ * - `key`：按一组组合键（普通快捷键磁片）
+ * - `text`：让电脑粘贴一段文字（文本磁片）
+ */
+export type MagnetAction =
+  | { kind: 'key'; combo: string[] }
+  | { kind: 'text'; text: string }
+
+/**
+ * 把磁片解析成可执行动作。
+ *
+ * ⚠️ 所有「触发磁片」的入口都走这里 —— 文本磁片的 combo 是空数组，
+ * 如果某个入口只判断 combo，文本磁片会在那里静默失效。
+ */
+export function magnetAction(
+  magnet: HotkeyMagnet | null | undefined,
+): MagnetAction | null {
+  if (!magnet) return null
+  if (magnetIsText(magnet)) {
+    return magnet.text ? { kind: 'text', text: magnet.text } : null
+  }
+  // 只有修饰键、没有主键的脏数据不要发出去（电脑端也会执行失败）
+  if (!magnetHasKey(magnet)) return null
+  const combo = magnetCombo(magnet)
+  return combo.length > 0 ? { kind: 'key', combo } : null
+}

@@ -28,6 +28,7 @@ func usage() {
       airmicd audio-devices        列出系统音频输出设备
       airmicd loopback-test [设备] 往虚拟设备写测试音再读回来（验证回环）
       airmicd tone [主机] [端口] [秒数]  发一段测试音（验证音频链路）
+      airmicd clipboard-test       自检文本磁片的剪贴板快照/还原（不碰系统剪贴板）
       airmicd simulate-app <名称>  模拟一次前台应用切换（测试预案自动切换）
     """)
 }
@@ -88,8 +89,7 @@ case "config":
         print("· \(preset.name)  绑定：\(bound)  磁贴：\(preset.tiles.count)")
     }
 
-case "audio-devices":
-    // 列出系统音频输出设备（排查下拉框为空）
+case "audio-devices":    // 列出系统音频输出设备（排查下拉框为空）
     let list = AudioDeviceManager.outputDevices()
     if list.isEmpty {
         print("没有枚举到任何输出设备")
@@ -105,6 +105,10 @@ case "loopback-test":
     // 默认挑第一个名字里带 BlackHole / Loopback 的设备
     let target = arguments.count > 1 ? arguments[1] : nil
     runLoopbackTest(matching: target)
+
+case "clipboard-test":
+    // 自检文本磁片的剪贴板快照 / 还原（私有粘贴板，不碰系统剪贴板）
+    exit(runClipboardPasterTest() ? 0 : 1)
 
 case "keycode":
     // 打印按键的 macOS 虚拟键码（排查快捷键用）

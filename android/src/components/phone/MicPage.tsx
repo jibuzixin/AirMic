@@ -173,7 +173,9 @@ export function MicPage({
     (magnet: HotkeyMagnet) => {
       // ⚠️ 必须真的发给电脑 —— 原型里这里只弹了个 toast，什么都没发
       fireMagnet(magnet)
-      showToast(`已发送 ${magnetDisplay(magnet)}`)
+      showToast(
+        `${magnetIsText(magnet) ? '已粘贴' : '已发送'} ${magnetDisplay(magnet)}`,
+      )
     },
     [fireMagnet, showToast],
   )
@@ -184,7 +186,7 @@ export function MicPage({
       // 文本磁片没有「按住」语义 —— 长按只是把它粘贴出来
       showToast(
         magnetIsText(magnet)
-          ? `已发送 ${magnetDisplay(magnet)}`
+          ? `已粘贴 ${magnetDisplay(magnet)}`
           : `按住中 · ${magnetDisplay(magnet)}（松手松开）`,
       )
     },

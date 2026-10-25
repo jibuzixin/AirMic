@@ -96,9 +96,12 @@ public final class AirMicServer: ObservableObject {
             if !connected {
                 self.connectedClient = nil
                 self.rttMs = nil
-                // 手机断线时把可能还按着的组合键松开，否则电脑上会一直卡住
-                self.hotkeyExecutor.release()
-                self.onMain { self.connectedPhoneName = nil }
+                // 手机断线时把可能还按着的组合键松开，否则电脑上会一直卡住。
+                // 走主队列，和按下操作保持先后顺序。
+                self.onMain {
+                    self.hotkeyExecutor.release()
+                    self.connectedPhoneName = nil
+                }
             }
         }
         foregroundWatcher.onChange = { [weak self] app in
@@ -397,25 +400,38 @@ public final class AirMicServer: ObservableObject {
         case Message.Kind.hotkeyExecute:
             guard let combo = message.combo else { return }
             guard requireAccessibility(client: client) else { return }
-            if !hotkeyExecutor.execute(combo: combo, target: targetApplication()) {
-                sendHotkeyError(client: client, reason: "这个快捷键在电脑上执行失败了，检查一下按键设置")
+            // 统一在主线程按消息顺序执行：文本粘贴用 NSPasteboard，必须在主线程；
+            // 快捷键也走同一条主队列，保证磁片组里「文本 → 按键」的顺序不会乱。
+            onMain { [weak self] in
+                guard let self else { return }
+                if !self.hotkeyExecutor.execute(combo: combo, target: self.targetApplication()) {
+                    self.sendHotkeyError(client: client, reason: "这个快捷键在电脑上执行失败了，检查一下按键设置")
+                }
             }
         case Message.Kind.hotkeyDown:
             // 长按语义：按下组合键，等 hotkey.up 才松开
             guard let combo = message.combo else { return }
             guard requireAccessibility(client: client) else { return }
-            if !hotkeyExecutor.press(combo: combo, target: targetApplication()) {
-                sendHotkeyError(client: client, reason: "这个快捷键在电脑上执行失败了，检查一下按键设置")
+            onMain { [weak self] in
+                guard let self else { return }
+                if !self.hotkeyExecutor.press(combo: combo, target: self.targetApplication()) {
+                    self.sendHotkeyError(client: client, reason: "这个快捷键在电脑上执行失败了，检查一下按键设置")
+                }
             }
         case Message.Kind.hotkeyUp:
             guard requireAccessibility(client: client) else { return }
-            hotkeyExecutor.release()
+            onMain { [weak self] in
+                self?.hotkeyExecutor.release()
+            }
         case Message.Kind.textPaste:
             // 文本磁片：把一段文字粘贴到前台应用
             guard let text = message.text, !text.isEmpty else { return }
             guard requireAccessibility(client: client) else { return }
-            if !textPaster.paste(text, target: targetApplication()) {
-                sendHotkeyError(client: client, reason: "这段文本没能在电脑上粘贴出来，检查一下辅助功能权限")
+            onMain { [weak self] in
+                guard let self else { return }
+                if !self.textPaster.paste(text, target: self.targetApplication()) {
+                    self.sendHotkeyError(client: client, reason: "这段文本没能在电脑上粘贴出来，检查一下辅助功能权限")
+                }
             }
         case Message.Kind.configPush, Message.Kind.configUpdate:
             handleConfig(message, client: client)

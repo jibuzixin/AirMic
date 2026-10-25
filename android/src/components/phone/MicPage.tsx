@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { AlertTriangle, SlidersHorizontal } from 'lucide-react'
-import { LevelRing, useLevel } from '@/components/LevelRing'
+import { LevelRing } from '@/components/LevelRing'
 import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
 import { fadeFast, springSmooth } from '@/lib/motion'
@@ -46,9 +46,12 @@ export function MicPage({
     fireMagnet,
     remoteError,
     dismissRemoteError,
+    micLevel,
   } = useAirmic()
   const preset = useActivePreset()
-  const level = useLevel(micMode !== 'idle')
+  // ⚠️ 用**真实**麦克风电平（原生采集算出来的 RMS）——
+  // 原型里这里是随机数，看着在动其实什么也没采到
+  const level = micLevel
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<number | null>(null)
 

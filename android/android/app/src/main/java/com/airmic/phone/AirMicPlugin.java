@@ -45,6 +45,13 @@ public class AirMicPlugin extends Plugin {
 
     @Override
     public void load() {
+        // 真实麦克风电平 → 界面上的电平表（原型里那是随机数假数据）
+        MicCapture.setGlobalLevelListener(level -> {
+            JSObject payload = new JSObject();
+            payload.put("level", level);
+            notifyListeners("level", payload);
+        });
+
         Context context = getContext();
         deviceId = "android-" + android.provider.Settings.Secure.getString(
             context.getContentResolver(), android.provider.Settings.Secure.ANDROID_ID);

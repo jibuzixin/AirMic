@@ -132,40 +132,11 @@ export function LevelRing({
 }
 
 /**
- * 电平驱动 hook
- * 收音时才运行；停止时归零并停止 rAF。
+ * 电平驱动 hook —— **已废弃**
+ *
+ * 原来这里是随机数（假电平），界面上看着在跳，其实跟麦克风没关系。
+ * 现在电平由原生采集算出来真实 RMS，通过插件事件送上来（store 的 `micLevel`）。
  */
-export function useLevel(active: boolean) {
-  const [level, setLevel] = useState(0)
-  const rafRef = useRef<number | null>(null)
-  const levelRef = useRef(0)
-
-  useEffect(() => {
-    if (!active) {
-      levelRef.current = 0
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-      return
-    }
-
-    const tick = () => {
-      const target = 0.35 + Math.random() * 0.4
-      const noise = (Math.random() - 0.5) * 0.16
-      levelRef.current = Math.max(
-        0.05,
-        Math.min(1, levelRef.current * 0.7 + target * 0.3 + noise),
-      )
-      setLevel(levelRef.current)
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-
-    return () => {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current)
-      rafRef.current = null
-    }
-  }, [active])
-
-  // 停收音时直接归零（渲染期派生，不用在 effect 里同步 setState）
-  return active ? level : 0
+export function useLevel(_active: boolean): number {
+  return 0
 }

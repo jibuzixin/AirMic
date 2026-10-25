@@ -26,6 +26,22 @@ import java.nio.ShortBuffer;
  */
 public class MicCapture {
 
+    /** 电平回调（真实麦克风电平，0–1） */
+    public interface LevelListener {
+        void onLevel(float level);
+    }
+
+    /**
+     * 全局电平监听。
+     *
+     * <p>采集跑在前台服务里，插件拿不到实例，所以用静态监听者把电平转出去。
+     */
+    private static volatile LevelListener globalListener;
+
+    public static void setGlobalLevelListener(LevelListener listener) {
+        globalListener = listener;
+    }
+
     private static final String TAG = "AirMicMic";
 
     /**
@@ -163,6 +179,9 @@ public class MicCapture {
             int read = audioRecord.read(pcm, 0, pcm.length);
             if (read <= 0) continue;
 
+            // --- 真实电平（RMS），给界面上的电平表用 ---
+            notifyLevel(pcm, read);
+
             // --- 喂给编码器 ---
             int inputIndex = encoder.dequeueInputBuffer(10_000);
             if (inputIndex >= 0) {
@@ -220,6 +239,21 @@ public class MicCapture {
         } catch (IOException e) {
             Log.w(TAG, "发送音频失败：" + e.getMessage());
         }
+    }
+
+    /** 算这一帧的 RMS 电平并抛给监听者 */
+    private void notifyLevel(short[] pcm, int count) {
+        LevelListener listener = globalListener;
+        if (listener == null || count <= 0) return;
+        double sum = 0;
+        for (int i = 0; i < count; i++) {
+            double value = pcm[i] / 32768.0;
+            sum += value * value;
+        }
+        double rms = Math.sqrt(sum / count);
+        // 放大一点，肉眼容易看见（说话时大概到 0.3–0.8）
+        float level = (float) Math.min(1.0, rms * 4.0);
+        listener.onLevel(level);
     }
 
     private void releaseAudio() {

@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import Carbon.HIToolbox
 import Foundation
@@ -23,13 +24,24 @@ public struct HotkeyExecutor {
 
     /// 执行一组组合键，如 ["cmd", "shift", "v"]
     ///
+    /// - Parameter target: 要接收按键的前台应用。
+    ///   ⚠️ 必须先激活它 —— 菜单栏面板打开时 AirMic 自己可能成为 active app，
+    ///   那样按键就发给了 AirMic 自己（表现为「⌘Space 能用但 ⌘T 没反应」：
+    ///   系统快捷键照样生效，普通快捷键却没人接）。
     /// - Returns: 是否成功（没权限 / 键不认识都会返回 false）
     @discardableResult
-    public func execute(combo: [String]) -> Bool {
+    public func execute(combo: [String], target: NSRunningApplication? = nil) -> Bool {
         guard !combo.isEmpty else { return false }
         guard Self.hasAccessibilityPermission else {
             Log.error("没有辅助功能权限，快捷键无法执行")
             return false
+        }
+
+        // 先把焦点交回前台应用
+        if let target {
+            target.activate(options: [.activateIgnoringOtherApps])
+            // 给系统一点时间切过去（activate 是异步的）
+            Thread.sleep(forTimeInterval: 0.05)
         }
 
         // 鼠标键与键盘主键互斥

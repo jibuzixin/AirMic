@@ -1,3 +1,4 @@
+import AppKit
 import CoreAudio
 import Foundation
 import Combine
@@ -257,6 +258,12 @@ public final class AirMicServer: ObservableObject {
         broadcastState()
     }
 
+    /// 1kHz 测试音开关（排查「电脑听不到声音」用）
+    public func setTestTone(_ enabled: Bool) {
+        audioWriter.setTestTone(enabled)
+        Log.info(enabled ? "1kHz 测试音：开" : "1kHz 测试音：关")
+    }
+
     public func setBufferMs(_ ms: Int) {
         config.bufferMs = max(10, min(500, ms))
         configStore.save(config)
@@ -316,7 +323,11 @@ public final class AirMicServer: ObservableObject {
                 Log.error("快捷键未执行：缺少辅助功能权限")
                 return
             }
-            if !hotkeyExecutor.execute(combo: combo) {
+            // 发给当前前台应用（不然会发到 AirMic 自己头上）
+            let target = foregroundApp.pid > 0
+                ? NSRunningApplication(processIdentifier: foregroundApp.pid)
+                : nil
+            if !hotkeyExecutor.execute(combo: combo, target: target) {
                 var failure = Message(type: "hotkey.error")
                 failure.reason = "这个快捷键在电脑上执行失败了，检查一下按键设置"
                 client.send(failure)

@@ -135,6 +135,8 @@ export type AirmicStore = {
   currentApp: KnownApp | null
   /** 电脑端返回的错误（比如快捷键没有权限） */
   remoteError: string | null
+  /** 真实麦克风电平（0–1）—— 电平表用这个，不是假数据 */
+  micLevel: number
   connectionError: string | null
 
   /* --- 动作 --- */
@@ -222,6 +224,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [currentApp, setCurrentApp] = useState<KnownApp | null>(null)
   /** 电脑端返回的错误 */
   const [remoteError, setRemoteError] = useState<string | null>(null)
+  /** 正在配对的那台电脑（配对成功后用来填 pairedDevice，顶部要显示设备名） */
+  const [pairingDevice, setPairingDevice] = useState<Device | null>(null)
+  /** 真实麦克风电平（0–1）—— 电平表用这个，不再是假数据 */
+  const [micLevel, setMicLevel] = useState(0)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const noticeSeq = useRef(0)
   /** 本机设备信息（原生侧生成，JS 侧发消息时必须带同一个 deviceId） */
@@ -302,6 +308,23 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           setPaired(!required)
           if (!required) {
             setConnectionError(null)
+            // 顶部要显示「已连接 · 设备名」—— 自动重连时也要补上
+            if (!pairedDevice) {
+              const known =
+                devices.find((d) => d.id === persisted.deviceId) ??
+                devices[0]
+              setPairedDevice(
+                known ??
+                  ({
+                    id: persisted.deviceId ?? '电脑',
+                    name: persisted.deviceName ?? '电脑',
+                    model: '',
+                    signal: 4,
+                    paired: true,
+                    lastSeen: Date.now(),
+                  } as Device),
+              )
+            }
             // 连上了就把配置推给电脑：磁贴的键位在电脑那边才有效
             pushConfig(magnets, presets)
           }
@@ -311,6 +334,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         case 'pair.respond': {
           if (message.approved === true && message.token) {
             setPaired(true)
+            // 顶部要显示「已连接 · 设备名」—— 设备信息这时候才补上
+            if (pairingDevice) setPairedDevice(pairingDevice)
             setPairingRequest(null)
             persist({ token: message.token })
             // 原生侧也存一份，重连时自动带上
@@ -323,6 +348,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         case 'pair.result': {
           if (message.ok === true && message.token) {
             setPaired(true)
+            if (pairingDevice) setPairedDevice(pairingDevice)
             persist({ token: message.token })
             void transport.saveToken(deviceInfo.deviceId, message.token)
           }
@@ -377,12 +403,26 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       }
     })
 
+    transport.onLevel((level) => {
+      setMicLevel(level)
+    })
+
     transport.onConnection((state) => {
       if (!state.connected && state.error) {
         setConnectionError(state.error)
       }
     })
-  }, [bufferMs, deviceInfo.deviceId, persist, transport])
+  }, [
+    bufferMs,
+    deviceInfo.deviceId,
+    devices,
+    pairedDevice,
+    pairingDevice,
+    persist,
+    persisted.deviceId,
+    persisted.deviceName,
+    transport,
+  ])
 
   const applyServerState = useCallback((server: any) => {
     // serverRunning = 电脑端当前有没有在收音（手机据此提示「声音传不过去」）
@@ -430,6 +470,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         deviceName: device.name,
         model: device.model,
       })
+      setPairingDevice(device)
       // ⚠️ 必须**先连上控制通道**再发配对请求 ——
       // 没连接时消息会被直接丢掉，电脑端收不到（表现为「手机在等、电脑没反应」）。
       void transport
@@ -573,6 +614,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const stopCapture = useCallback(() => {
     send({ type: 'mic.state.report', mode: 'idle' })
     void transport.stopMic()
+    setMicLevel(0)
   }, [send, transport])
 
   /**
@@ -750,6 +792,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       appList,
       currentApp,
       remoteError,
+      micLevel,
       connectionError,
       startScan,
       requestPair,
@@ -805,6 +848,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       appList,
       currentApp,
       remoteError,
+      micLevel,
       connectionError,
       startScan,
       requestPair,

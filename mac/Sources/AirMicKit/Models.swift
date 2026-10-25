@@ -210,10 +210,13 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
 public struct ForegroundApp: Equatable {
     public var name: String
     public var bundleId: String
+    /// 进程 id —— 用来把快捷键发给**正确的那个 app**
+    public var pid: pid_t
 
-    public init(name: String, bundleId: String) {
+    public init(name: String, bundleId: String, pid: pid_t = 0) {
         self.name = name
         self.bundleId = bundleId
+        self.pid = pid
     }
 }
 

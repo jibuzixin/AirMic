@@ -278,7 +278,13 @@ struct PanelView: View {
                             .frame(width: 42, alignment: .trailing)
                     }
 
-                    Toggle(isOn: $state.testToneOn) {
+                    Toggle(isOn: Binding(
+                        get: { state.testToneOn },
+                        set: {
+                            state.testToneOn = $0
+                            state.setTestTone($0)
+                        }
+                    )) {
                         Text("1kHz 测试音")
                             .font(.system(size: 11))
                             .foregroundStyle(Theme.textSecondary)

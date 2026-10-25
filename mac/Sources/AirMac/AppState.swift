@@ -85,6 +85,11 @@ final class AppState: ObservableObject {
         server.setBufferMs(ms)
     }
 
+    /// 1kHz 测试音
+    func setTestTone(_ enabled: Bool) {
+        server.setTestTone(enabled)
+    }
+
     func refreshPairCode() {
         server.refreshPairCode()
     }

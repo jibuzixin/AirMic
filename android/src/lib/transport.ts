@@ -35,6 +35,8 @@ export interface AirMicTransport {
   stopMic(): Promise<void>
   /** 连接状态变化 */
   onConnection(handler: (state: { connected: boolean; error?: string }) => void): void
+  /** 真实麦克风电平（0–1） */
+  onLevel(handler: (level: number) => void): void
 }
 
 /* ------------------------------------------------------------------ *
@@ -114,6 +116,10 @@ class NativeTransport implements AirMicTransport {
   onConnection(handler: (state: { connected: boolean; error?: string }) => void): void {
     void AirMicNative.addListener('connection', (data) => handler(data))
   }
+
+  onLevel(handler: (level: number) => void): void {
+    void AirMicNative.addListener('level', (data) => handler(Number(data.level) || 0))
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -192,6 +198,11 @@ class LoopbackTransport implements AirMicTransport {
 
   onConnection(handler: (state: { connected: boolean; error?: string }) => void): void {
     this.connectionHandlers.push(handler)
+  }
+
+  onLevel(handler: (level: number) => void): void {
+    /* 开发模式没有真实电平 */
+    void handler
   }
 
   private emit(message: Record<string, any>) {

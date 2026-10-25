@@ -22,16 +22,31 @@ export function TileGrid({
   onFire: (magnet: HotkeyMagnet) => void
   onUnbound: (magnet: HotkeyMagnet) => void
 }) {
+  // ⚠️ 固定 3×2 六个格子 —— 磁铁不够时用空位占住，
+  // 否则磁贴数量一变，下面的麦克风按钮就会被挤得上下跳。
+  const slots: (HotkeyMagnet | null)[] = Array.from(
+    { length: 6 },
+    (_, index) => magnets[index] ?? null,
+  )
+
   return (
     <div className="grid grid-cols-3 gap-2">
-      {magnets.map((magnet) => (
-        <TileButton
-          key={magnet.id}
-          magnet={magnet}
-          onFire={onFire}
-          onUnbound={onUnbound}
-        />
-      ))}
+      {slots.map((magnet, index) =>
+        magnet ? (
+          <TileButton
+            key={magnet.id}
+            magnet={magnet}
+            onFire={onFire}
+            onUnbound={onUnbound}
+          />
+        ) : (
+          <div
+            key={`slot-${index}`}
+            aria-hidden
+            className="h-[84px] rounded-xl border border-transparent"
+          />
+        ),
+      )}
     </div>
   )
 }

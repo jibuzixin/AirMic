@@ -20,6 +20,7 @@ func usage() {
       airmicd serve                启动服务端（监听 + 广播 + 前台应用监听）
       airmicd serve --auto-approve 启动服务端并自动同意配对（开发用）
       airmicd serve --audio       同时打开音频管线（配合 airmicd tone 自测）
+      airmicd serve --test-tone   打开 1kHz 测试音（验证「写设备」链路）
       airmicd pair-code            打印当前配对码
       airmicd devices              列出已配对设备
       airmicd config               打印当前配置（磁铁 / 预案）
@@ -41,7 +42,12 @@ case "serve":
         print("AirMic 服务端已启动（设备 id：\(server.deviceId)）")
         print("配对码：\(server.pairCode.code)  有效期 \(server.pairCode.remainingSeconds) 秒")
 
-        if arguments.contains("--audio") {
+        if arguments.contains("--test-tone") {
+            // 只测输出链路：电脑自己发 1kHz，能听见就说明「写设备」这一步是通的
+            server.toggleRecording()
+            server.setTestTone(true)
+            print("1kHz 测试音已开启（从电脑的输出设备出声）")
+        } else if arguments.contains("--audio") {
             server.toggleRecording()
             print("音频管线已启动（UDP \(AudioReceiver.defaultPort)）")
             // 每秒打印一次统计

@@ -15,6 +15,19 @@ public final class VirtualAudioWriter {
     private let buffer: RingBuffer
 
     /// 目标设备的流格式
+    /// 1kHz 测试音：打开后忽略收到的 PCM，直接生成正弦波 ——
+    /// 用来分清「手机没采到音」还是「电脑没写出去」
+    private var testToneEnabled = false
+    private var testTonePhase: Double = 0
+
+    /// 开关 1kHz 测试音
+    public func setTestTone(_ enabled: Bool) {
+        testToneEnabled = enabled
+        if !enabled { testTonePhase = 0 }
+    }
+
+    public var isTestToneEnabled: Bool { testToneEnabled }
+
     private var streamFormat = AudioStreamBasicDescription(
         mSampleRate: 48000,
         mFormatID: kAudioFormatLinearPCM,
@@ -107,6 +120,36 @@ public final class VirtualAudioWriter {
 
         // 这一轮要写多少帧
         let frames = buffers[0].mDataByteSize / UInt32(max(bytesPerFrame, 1))
+
+        // 测试音：直接生成 1kHz 正弦波
+        if testToneEnabled {
+            let step = 2 * Double.pi * 1000 / streamFormat.mSampleRate
+            for index in 0..<Int(frames) {
+                let value = Float(sin(testTonePhase)) * 0.25
+                testTonePhase += step
+                if testTonePhase > 2 * Double.pi { testTonePhase -= 2 * Double.pi }
+                let sample = Int16(value * 32767)
+                for bufferIndex in 0..<buffers.count {
+                    guard let data = buffers[bufferIndex].mData else { continue }
+                    let capacity = Int(buffers[bufferIndex].mDataByteSize)
+                    let stride = capacity / max(Int(frames), 1)
+                    let offset = min(index * stride, max(capacity - bytesPerSample, 0))
+                    if isFloat {
+                        var out = value
+                        if bytesPerSample == 4 {
+                            memcpy(data.advanced(by: offset), &out, 4)
+                        } else {
+                            var half = Float16(value)
+                            memcpy(data.advanced(by: offset), &half, 2)
+                        }
+                    } else {
+                        var out = UInt16(bitPattern: sample)
+                        memcpy(data.advanced(by: offset), &out, min(bytesPerSample, 2))
+                    }
+                }
+            }
+            return
+        }
 
         // 欠载 → 补静音
         guard let mono = buffer.read(frames: Int(frames)) else {

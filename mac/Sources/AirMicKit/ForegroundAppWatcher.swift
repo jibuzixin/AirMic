@@ -19,7 +19,8 @@ public final class ForegroundAppWatcher {
         let active = workspace.frontmostApplication
         current = ForegroundApp(
             name: active?.localizedName ?? "访达",
-            bundleId: active?.bundleIdentifier ?? "com.apple.finder"
+            bundleId: active?.bundleIdentifier ?? "com.apple.finder",
+            pid: active?.processIdentifier ?? 0
         )
     }
 
@@ -34,7 +35,8 @@ public final class ForegroundAppWatcher {
             else { return }
             let next = ForegroundApp(
                 name: app.localizedName ?? "未知应用",
-                bundleId: app.bundleIdentifier ?? ""
+                bundleId: app.bundleIdentifier ?? "",
+                pid: app.processIdentifier
             )
             guard let self, next != self.current else { return }
             self.current = next

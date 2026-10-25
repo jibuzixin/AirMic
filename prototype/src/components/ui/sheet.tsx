@@ -1,3 +1,9 @@
+/**
+ * Derived from EasyUI (https://github.com/Surajmaurya1/easyui).
+ * Copyright (c) 2026 Suraj Maurya. MIT License.
+ * See THIRD_PARTY_NOTICES.md for the full notice.
+ */
+
 "use client";
 
 import * as React from "react";

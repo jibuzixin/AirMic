@@ -44,4 +44,10 @@ SHA256 (AirMic-v0.5.1-debug.apk)   31d1919c4dc2f502cd6f02998d1cec9dc3e0ed32b76b4
 - 目前只支持局域网，不支持跨网络 / NAT 穿透。
 - iOS 客户端尚未开发。
 
+## 许可证
+
+AirMic 使用 MIT License。原型中的部分动效组件来自
+[EasyUI](https://github.com/Surajmaurya1/easyui)（MIT，© 2026 Suraj Maurya），
+完整第三方声明见仓库的 `THIRD_PARTY_NOTICES.md`。
+
 完整说明见仓库的 README 与 `docs/技术方案.md`。

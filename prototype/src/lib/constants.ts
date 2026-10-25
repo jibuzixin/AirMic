@@ -1,4 +1,10 @@
 /**
+ * Derived from EasyUI (https://github.com/Surajmaurya1/easyui).
+ * Copyright (c) 2026 Suraj Maurya. MIT License.
+ * See THIRD_PARTY_NOTICES.md for the full notice.
+ */
+
+/**
  * EasyUI — Global Constants
  * Single source of truth for external URLs and project identifiers.
  */

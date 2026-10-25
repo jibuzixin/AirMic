@@ -13,6 +13,7 @@
 [![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](../../releases/latest)
 [![LAN only](https://img.shields.io/badge/network-LAN%20only-35C98A?style=flat-square)](#隐私)
 [![no telemetry](https://img.shields.io/badge/telemetry-none-8E8E93?style=flat-square)](#隐私)
+[![license](https://img.shields.io/badge/license-MIT-35C98A?style=flat-square)](LICENSE)
 
 [下载](#下载与安装) · [使用指南](#使用指南) · [常见问题](#常见问题) · [从源码构建](#从源码构建) · [协议文档](shared/protocol.md)
 
@@ -294,7 +295,9 @@ airmic/
 ├── scripts/                 环境、打包、图标生成
 ├── tools/fake-phone.mjs     假手机端（协议联调）
 ├── CLAUDE.md                给 AI / 新维护者的项目说明
-└── AGENTS.md                其他 AI 工具的入口
+├── AGENTS.md                其他 AI 工具的入口
+├── LICENSE                  MIT
+└── THIRD_PARTY_NOTICES.md   第三方组件许可
 ```
 
 ## 已知限制
@@ -316,9 +319,21 @@ airmic/
 | [prototype/DESIGN.md](prototype/DESIGN.md) | 视觉契约 |
 | [CLAUDE.md](CLAUDE.md) | 给 AI / 新维护者的开发说明 |
 
+## 致谢
+
+- [EasyUI](https://github.com/Surajmaurya1/easyui) —— 原型里的部分动效组件和弹簧参数参考 / 来自 EasyUI（MIT，© 2026 Suraj Maurya）。完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+- [BlackHole](https://existential.audio/blackhole/) —— macOS 上的虚拟音频设备，AirMic 依赖它把声音送进其他应用。
+- [Lucide](https://lucide.dev/) · [Framer Motion](https://www.framer.com/motion/) · [Capacitor](https://capacitorjs.com/) · [Tailwind CSS](https://tailwindcss.com/) · [shadcn/ui](https://ui.shadcn.com/) —— 界面、动效与跨端外壳。
+
+## 许可证
+
+本项目使用 [MIT License](LICENSE)，Copyright © 2026 jibuzixin。
+
+EasyUI 同样是 MIT 许可，允许使用、修改、分发，也允许商业使用；本项目为非商业用途，但仍按 MIT 要求保留其版权与许可声明。第三方组件的完整声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
 ---
 
 <div align="center">
 <sub>Audio on the LAN. No cloud, no account, no telemetry.</sub><br>
-<sub>License: 暂未声明 —— 公开分发前请先补充 LICENSE。</sub>
+<sub>License: MIT © 2026 jibuzixin · <a href="THIRD_PARTY_NOTICES.md">Third-party notices</a></sub>
 </div>

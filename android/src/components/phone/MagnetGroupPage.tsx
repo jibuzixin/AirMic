@@ -1,4 +1,4 @@
-import { createElement, useState } from 'react'
+import { createElement, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   ArrowDown,
@@ -73,7 +73,8 @@ export function MagnetGroupPage({ onBack }: { onBack: () => void }) {
       </p>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-6">
-        {draft && (
+        {/* 新建：编辑区放在列表最上面（还没有对应的行） */}
+        {draft && !groups.some((group) => group.id === draft.id) && (
           <GroupEditor
             draft={draft}
             magnets={magnets}
@@ -95,54 +96,71 @@ export function MagnetGroupPage({ onBack }: { onBack: () => void }) {
           </div>
         ) : (
           <ul className="mt-2 flex flex-col gap-1.5">
-            {groups.map((group) => (
-              <li
-                key={group.id}
-                className={
-                  runningGroupId === group.id
-                    ? 'flex items-center gap-2 rounded-xl border border-[var(--color-amber-accent)] bg-surface-1 px-3 py-2.5'
-                    : 'flex items-center gap-2 rounded-xl border border-border-subtle bg-surface-1 px-3 py-2.5'
-                }
-              >
-                <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-text-secondary">
-                  {createElement(tileIcon(group.icon), {
-                    size: 15,
-                    strokeWidth: 1.8,
-                  })}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate text-[13px] text-text-primary">
-                    {group.name}
-                  </span>
-                  <span className="tabular block text-[10px] text-text-tertiary">
-                    {group.steps.length} 步 · 间隔 {group.intervalSeconds}s
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => runGroup(group)}
-                  aria-label={`执行磁片组「${group.name}」`}
-                  className="grid size-9 shrink-0 place-items-center rounded-[10px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
+            {groups.map((group) =>
+              draft?.id === group.id ? (
+                // 编辑**在原位置展开**，不跳到最上面
+                <li key={group.id}>
+                  <GroupEditor
+                    draft={draft}
+                    magnets={magnets}
+                    onChange={setDraft}
+                    onCancel={() => setDraft(null)}
+                    onSave={() => {
+                      upsertGroup(draft)
+                      setDraft(null)
+                    }}
+                  />
+                </li>
+              ) : (
+                <li
+                  key={group.id}
+                  className={
+                    runningGroupId === group.id
+                      ? 'flex items-center gap-2 rounded-xl border border-[var(--color-amber-accent)] bg-surface-1 px-3 py-2.5'
+                      : 'flex items-center gap-2 rounded-xl border border-border-subtle bg-surface-1 px-3 py-2.5'
+                  }
                 >
-                  <Play size={14} strokeWidth={2} />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDraft(group)}
-                  className="shrink-0 rounded-full px-2 py-1 text-[11px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
-                >
-                  编辑
-                </button>
-                <button
-                  type="button"
-                  aria-label={`删除磁片组「${group.name}」`}
-                  onClick={() => deleteGroup(group.id)}
-                  className="grid size-9 shrink-0 place-items-center rounded-[10px] text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
-                >
-                  <Trash2 size={14} strokeWidth={1.8} />
-                </button>
-              </li>
-            ))}
+                  {/* 点整行进入编辑 */}
+                  <button
+                    type="button"
+                    onClick={() => setDraft({ ...group })}
+                    aria-label={`编辑磁片组「${group.name}」`}
+                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  >
+                    <span className="grid size-8 shrink-0 place-items-center rounded-[10px] bg-surface-2 text-text-secondary">
+                      {createElement(tileIcon(group.icon), {
+                        size: 15,
+                        strokeWidth: 1.8,
+                      })}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[13px] text-text-primary">
+                        {group.name}
+                      </span>
+                      <span className="tabular block text-[10px] text-text-tertiary">
+                        {group.steps.length} 步 · 间隔 {group.intervalSeconds}s
+                      </span>
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runGroup(group)}
+                    aria-label={`执行磁片组「${group.name}」`}
+                    className="grid size-9 shrink-0 place-items-center rounded-[10px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    <Play size={14} strokeWidth={2} />
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={`删除磁片组「${group.name}」`}
+                    onClick={() => deleteGroup(group.id)}
+                    className="grid size-9 shrink-0 place-items-center rounded-[10px] text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
+                  >
+                    <Trash2 size={14} strokeWidth={1.8} />
+                  </button>
+                </li>
+              ),
+            )}
           </ul>
         )}
       </div>
@@ -166,6 +184,12 @@ function GroupEditor({
   onSave: () => void
 }) {
   const [query, setQuery] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+
+  // 原地展开时可能落在可视区外，轻轻滚到可见位置
+  useEffect(() => {
+    containerRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [])
   /** 保留空位（找不到的磁片）以维持索引与 draft.steps 对齐 */
   const steps = draft.steps.map((id) => magnets.find((m) => m.id === id))
   const keyword = query.trim().toLowerCase()
@@ -190,9 +214,10 @@ function GroupEditor({
 
   return (
     <motion.div
+      ref={containerRef}
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
-      className="mb-3 rounded-xl border border-border-strong bg-surface-1 p-3"
+      className="mb-1.5 rounded-xl border border-border-strong bg-surface-1 p-3"
     >
       <div className="flex items-center gap-2">
         <Boxes size={14} strokeWidth={1.8} className="text-text-secondary" />

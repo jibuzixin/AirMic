@@ -3,10 +3,14 @@ import SwiftUI
 
 /// 菜单栏面板。宽度固定 318px（需求说明书 §2.1）。
 ///
-/// 纵向顺序不可变：状态行 → 配对码 → 输出设备 → 收音主按钮 → 详细设置 → 退出。
+/// 纵向顺序：状态行 → 音频输出/收音 → 详细设置 → 已配对设备 → 退出。
+///
+/// 背景是外层 NSPanel 的毛玻璃；这里再盖一层半透明底色，
+/// 并把每组功能放进「卡片」（照控制中心的做法）——
+/// 既保证文字可读，也把不同的功能区域分开。
 struct PanelView: View {
     @ObservedObject var state: AppState
-    /// 内容高度变化时回调 —— 外层 NSPanel 用它做窗口高度动画
+    /// 内容高度变化时回调 —— 外层 NSPanel 用它调整窗口高度
     var onHeightChange: ((CGFloat) -> Void)?
 
     /// 面板右下角显示的版本号（用来确认跑的是哪一份构建）
@@ -15,9 +19,8 @@ struct PanelView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: 8) {
             statusRow
-            Divider().overlay(Theme.borderSubtle)
 
             if !state.pendingRequests.isEmpty {
                 pairingRequestCard
@@ -27,37 +30,29 @@ struct PanelView: View {
                 accessibilityHint
             }
 
-            VStack(alignment: .leading, spacing: 12) {
-                outputDeviceRow
-                recordButton
+            SectionCard {
+                VStack(alignment: .leading, spacing: 10) {
+                    outputDeviceRow
+                    recordButton
+                }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
 
-            Divider().overlay(Theme.borderSubtle)
+            SectionCard {
+                detailsSection
+            }
 
-            detailsSection
             pairedDevicesSection
 
-            Divider().overlay(Theme.borderSubtle)
-
-            HStack(spacing: 8) {
-                Button("退出 AirMic") { state.quit() }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12))
-                    .foregroundStyle(Theme.textSecondary)
-
-                Spacer(minLength: 0)
-
-                Text("v\(appVersion)")
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(Theme.textFaint)
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            footer
         }
+        .padding(10)
         .frame(width: 318)
-        // 背景交给外层 NSPanel 的 NSVisualEffectView，这里保持透明
+        // 半透明底色：毛玻璃仍然透，但文字有了对比度。
+        // 必须自己也是圆角 —— 否则矩形底色会把毛玻璃的圆角盖成直角。
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Theme.panelTint)
+        )
         .background(
             GeometryReader { proxy in
                 Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
@@ -72,9 +67,27 @@ struct PanelView: View {
             state.refreshDevices()
         }
         .onChange(of: state.pendingRequests.count) { count in
-            // 面板确实收到了配对请求（排查「手机在等、电脑没反应」用）
             AirMicKit.Log.info("面板：待处理的配对请求 = \(count)")
         }
+    }
+
+    // MARK: - 底部
+
+    private var footer: some View {
+        HStack(spacing: 8) {
+            Button("退出 AirMic") { state.quit() }
+                .buttonStyle(.plain)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.textSecondary)
+
+            Spacer(minLength: 0)
+
+            Text("v\(appVersion)")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(Theme.textFaint)
+        }
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
     }
 
     // MARK: - 状态行
@@ -93,8 +106,8 @@ struct PanelView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textSecondary)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 4)
+        .padding(.top, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -116,12 +129,10 @@ struct PanelView: View {
                 }
                 .padding(10)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Theme.surface2)
-                .clipShape(RoundedRectangle(cornerRadius: Theme.radiusLarge))
+                .background(Theme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
     }
 
     // MARK: - 辅助功能权限
@@ -159,9 +170,11 @@ struct PanelView: View {
                 }
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, 10)
         .padding(.vertical, 8)
-        .background(Theme.surface2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Theme.card)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     // MARK: - 输出设备
@@ -222,7 +235,7 @@ struct PanelView: View {
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
             .background(
-                RoundedRectangle(cornerRadius: Theme.radiusLarge)
+                RoundedRectangle(cornerRadius: Theme.radiusLarge, style: .continuous)
                     .fill(state.isRecording ? Theme.surface2 : Theme.amber)
             )
             .foregroundStyle(state.isRecording ? Theme.textPrimary : Color.black)
@@ -280,8 +293,6 @@ struct PanelView: View {
                 Spacer(minLength: 0)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
     }
 
     /// 四个统计指标。拿不到真实数据就显示 `[--]` —— **不编数字**。
@@ -326,39 +337,51 @@ struct PanelView: View {
     @ViewBuilder
     private var pairedDevicesSection: some View {
         if !state.pairedDevices.isEmpty {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("已配对设备")
-                    .font(.system(size: 10))
-                    .foregroundStyle(Theme.textTertiary)
-                    .padding(.horizontal, 12)
-
-                ForEach(state.pairedDevices) { device in
-                    HStack(spacing: 8) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(device.displayName)
-                                .font(.system(size: 12))
-                                .foregroundStyle(Theme.textPrimary)
-                            Text(device.model)
-                                .font(.system(size: 10))
-                                .foregroundStyle(Theme.textTertiary)
-                        }
-                        Spacer(minLength: 0)
-                        Button {
-                            state.unpair(device)
-                        } label: {
-                            Image(systemName: "trash")
-                                .font(.system(size: 11))
-                        }
-                        .buttonStyle(.plain)
+            SectionCard {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("已配对设备")
+                        .font(.system(size: 10))
                         .foregroundStyle(Theme.textTertiary)
-                        .help("删除配对信息（这台手机下次要重新配对）")
+
+                    ForEach(state.pairedDevices) { device in
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(device.displayName)
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(Theme.textPrimary)
+                                Text(device.model)
+                                    .font(.system(size: 10))
+                                    .foregroundStyle(Theme.textTertiary)
+                            }
+                            Spacer(minLength: 0)
+                            Button {
+                                state.unpair(device)
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11))
+                            }
+                            .buttonStyle(.plain)
+                            .foregroundStyle(Theme.textTertiary)
+                            .help("删除配对信息（这台手机下次要重新配对）")
+                        }
+                        .padding(.vertical, 2)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 4)
                 }
             }
-            .padding(.bottom, 8)
         }
+    }
+}
+
+/// 分组卡片（照控制中心的做法：一组功能一张卡）
+struct SectionCard<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Theme.card)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -372,7 +395,7 @@ struct PanelActionButtonStyle: ButtonStyle {
             .padding(.horizontal, 10)
             .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: Theme.radiusSmall)
+                RoundedRectangle(cornerRadius: Theme.radiusSmall, style: .continuous)
                     .fill(isPrimary ? Theme.amber : Theme.surface3)
             )
             .foregroundStyle(isPrimary ? Color.black : Theme.textPrimary)
@@ -380,8 +403,7 @@ struct PanelActionButtonStyle: ButtonStyle {
     }
 }
 
-
-/// 内容高度（给外层窗口动画用）
+/// 内容高度（给外层窗口调整用）
 struct PanelHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {

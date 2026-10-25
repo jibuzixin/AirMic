@@ -29,10 +29,16 @@ enum Theme {
     static let connected = Color.dynamic(light: 0x128F5C, dark: 0x35C98A)
     static let recording = Color.dynamic(light: 0xD9423B, dark: 0xFF5A5A)
 
-    /// 毛玻璃上的薄着色层：保证文字对比度，也让浅色模式不发灰
+    /// 毛玻璃上的薄着色层：保证文字对比度，同时保留透明感
     static let panelTint = Color.dynamicFill(
-        light: 0xFFFFFF, lightAlpha: 0.55,
-        dark: 0x0B0B0D, darkAlpha: 0.45
+        light: 0xFFFFFF, lightAlpha: 0.38,
+        dark: 0x0B0B0D, darkAlpha: 0.42
+    )
+
+    /// 分组卡片：比底色再亮一层 —— 像控制中心那样把功能区域分开
+    static let card = Color.dynamicFill(
+        light: 0xFFFFFF, lightAlpha: 0.62,
+        dark: 0xFFFFFF, darkAlpha: 0.07
     )
 
     // 圆角

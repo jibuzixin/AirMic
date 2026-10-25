@@ -135,10 +135,9 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
         effect.blendingMode = .behindWindow
         effect.state = .active
         effect.isEmphasized = true
-        effect.wantsLayer = true
-        effect.layer?.cornerRadius = 12
-        effect.layer?.cornerCurve = .continuous
-        effect.layer?.masksToBounds = true
+        // ⚠️ NSVisualEffectView 的材质是私有图层画的，`layer.cornerRadius` 裁不掉它 ——
+        // 必须用 maskImage（可拉伸的圆角遮罩），四个角才会真的圆。
+        effect.maskImage = Self.roundedMask(radius: 16)
 
         let panel = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: panelWidth, height: contentHeight),
@@ -169,6 +168,19 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
 
         self.hosting = hosting
         self.panel = panel
+    }
+
+    /// 可拉伸的圆角遮罩（用于 NSVisualEffectView）
+    private static func roundedMask(radius: CGFloat) -> NSImage {
+        let edge = radius * 2 + 1
+        let image = NSImage(size: NSSize(width: edge, height: edge), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(roundedRect: rect, xRadius: radius, yRadius: radius).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: radius, left: radius, bottom: radius, right: radius)
+        image.resizingMode = .stretch
+        return image
     }
 
     /// SwiftUI 内容高度变了 → 动画窗口高度（顶部固定，向下生长）

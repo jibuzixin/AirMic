@@ -12,7 +12,7 @@ CONFIG="${1:-release}"
 OUT_ROOT="${2:-$ROOT/dist/mac}"
 APP_NAME="AirMic"
 BUNDLE_ID="com.airmic.mac"
-VERSION="0.3.7"
+VERSION="0.3.8"
 BUILD_DIR="$ROOT/mac/.build/$CONFIG"
 OUT_DIR="$OUT_ROOT"
 APP_BUNDLE="$OUT_DIR/$APP_NAME-$VERSION.app"
@@ -25,6 +25,7 @@ swift build --package-path "$ROOT/mac" -c "$CONFIG"
 log "组装 .app bundle…"
 mkdir -p "$APP_BUNDLE/Contents/MacOS" "$APP_BUNDLE/Contents/Resources"
 cp "$BUILD_DIR/AirMac" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
+cp "$ROOT/assets/AppIcon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
 
 cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -39,6 +40,8 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <string>$BUNDLE_ID</string>
     <key>CFBundleExecutable</key>
     <string>$APP_NAME</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="mic" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFD876"/>
+      <stop offset="1" stop-color="#FFA710"/>
+    </linearGradient>
+  </defs>
+  <!-- 自适应图标前景：内容缩到安全区（72%） -->
+  <g transform="translate(512 512) scale(0.72) translate(-512 -512)">
+    <g fill="none" stroke="#FFB020" stroke-linecap="round">
+      <path d="M 700 380 Q 752 470 700 560" stroke-width="26" stroke-opacity="0.55"/>
+      <path d="M 754 344 Q 828 470 754 596" stroke-width="20" stroke-opacity="0.22"/>
+      <path d="M 324 380 Q 272 470 324 560" stroke-width="26" stroke-opacity="0.55"/>
+      <path d="M 270 344 Q 196 470 270 596" stroke-width="20" stroke-opacity="0.22"/>
+    </g>
+    <g transform="rotate(-8 512 470)">
+      <rect x="397" y="240" width="230" height="404" rx="115" fill="url(#mic)"/>
+      <rect x="417" y="260" width="190" height="364" rx="95" fill="none"
+            stroke="#FFFFFF" stroke-opacity="0.20" stroke-width="10"/>
+      <circle cx="470" cy="378" r="17" fill="#2B1A00"/>
+      <circle cx="554" cy="378" r="17" fill="#2B1A00"/>
+      <path d="M 472 436 Q 512 474 552 436" stroke="#2B1A00" stroke-width="18"
+            stroke-linecap="round" fill="none"/>
+    </g>
+    <circle cx="788" cy="258" r="46" fill="#35C98A"/>
+  </g>
+</svg>

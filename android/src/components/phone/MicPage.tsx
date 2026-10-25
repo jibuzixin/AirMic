@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, SlidersHorizontal, RefreshCw } from 'lucide-react'
+import { AlertTriangle, SlidersHorizontal, RefreshCw, Settings } from 'lucide-react'
 import { LevelRing } from '@/components/LevelRing'
 import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
@@ -25,9 +25,12 @@ import { TileGrid, type TileEntry } from './TileGrid'
  */
 export function MicPage({
   onOpenPresets,
+  onOpenSettings,
   onEditMicBindings,
 }: {
   onOpenPresets: () => void
+  /** 直达设置页（和预案并列放在右上角） */
+  onOpenSettings: () => void
   /** 点「按下 / 松开」键位芯片 → 直接打开快捷键设置 */
   onEditMicBindings: () => void
 }) {
@@ -258,14 +261,24 @@ export function MicPage({
               {foregroundApp.name}
             </span>
           </div>
-          <button
-            type="button"
-            onClick={onOpenPresets}
-            aria-label="预案与设备设置"
-            className="grid size-11 shrink-0 place-items-center rounded-[10px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary active:scale-95"
-          >
-            <SlidersHorizontal size={17} strokeWidth={1.7} />
-          </button>
+          <div className="flex shrink-0 items-center">
+            <button
+              type="button"
+              onClick={onOpenPresets}
+              aria-label="预案"
+              className="grid size-11 place-items-center rounded-[10px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary active:scale-95"
+            >
+              <SlidersHorizontal size={17} strokeWidth={1.7} />
+            </button>
+            <button
+              type="button"
+              onClick={onOpenSettings}
+              aria-label="设置"
+              className="grid size-11 place-items-center rounded-[10px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary active:scale-95"
+            >
+              <Settings size={17} strokeWidth={1.7} />
+            </button>
+          </div>
         </div>
 
         {/* ---------- 当前预案（常驻，不自动消失） ----------

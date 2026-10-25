@@ -28,6 +28,10 @@ public final class HotkeyExecutor {
     /// 只给主键挂 flags，很多 App 收不到 flagsChanged，会觉得 ⌘⇧ 一直按着不放。
     private var held: (keyCode: CGKeyCode, flags: CGEventFlags, modifiers: [String])?
 
+    /// 按住时的重复触发（模拟系统按键重复）
+    private var repeatDelayTimer: Timer?
+    private var repeatTimer: Timer?
+
     /// 修饰键的虚拟键码（左侧）
     private static let modifierKeyCodes: [String: CGKeyCode] = [
         "ctrl": 59, "alt": 58, "shift": 56, "cmd": 55,
@@ -72,6 +76,7 @@ public final class HotkeyExecutor {
         down?.post(tap: .cghidEventTap)
 
         held = (resolved.keyCode, resolved.flags, modifiers)
+        startRepeating(keyCode: resolved.keyCode, flags: resolved.flags)
         Log.info("按下组合键：\(combo.joined(separator: "+"))")
         return true
     }
@@ -79,6 +84,7 @@ public final class HotkeyExecutor {
     /// 松开之前按下的组合键
     @discardableResult
     public func release() -> Bool {
+        stopRepeating()
         guard let held else { return false }
 
         // 先松开主键
@@ -105,6 +111,43 @@ public final class HotkeyExecutor {
         self.held = nil
         Log.info("松开组合键")
         return true
+    }
+
+    /// 按住不放时按系统节奏重复发送（撤销、删除这类操作需要连发）
+    private func startRepeating(keyCode: CGKeyCode, flags: CGEventFlags) {
+        stopRepeating()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            // 第一次重复前等 0.35s（和系统 initial delay 接近）
+            let delay = Timer(timeInterval: 0.35, repeats: false) { [weak self] _ in
+                guard let self, self.held != nil else { return }
+                let timer = Timer(timeInterval: 0.06, repeats: true) { [weak self] _ in
+                    guard let self, self.held != nil else {
+                        self?.stopRepeating()
+                        return
+                    }
+                    let event = CGEvent(
+                        keyboardEventSource: nil,
+                        virtualKey: keyCode,
+                        keyDown: true
+                    )
+                    event?.flags = flags
+                    event?.setIntegerValueField(.keyboardEventAutorepeat, value: 1)
+                    event?.post(tap: .cghidEventTap)
+                }
+                RunLoop.main.add(timer, forMode: .common)
+                self.repeatTimer = timer
+            }
+            RunLoop.main.add(delay, forMode: .common)
+            self.repeatDelayTimer = delay
+        }
+    }
+
+    private func stopRepeating() {
+        repeatDelayTimer?.invalidate()
+        repeatDelayTimer = nil
+        repeatTimer?.invalidate()
+        repeatTimer = nil
     }
 
     /// 把焦点交回前台应用，并等它真的切过去

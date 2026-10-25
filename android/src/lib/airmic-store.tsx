@@ -92,7 +92,7 @@ function loadPersisted(): Persisted {
     deviceHost: null,
     devicePort: null,
     theme: 'system',
-    silenceSeconds: 10,
+    silenceSeconds: 30,
     groups: [],
   }
   try {
@@ -121,7 +121,13 @@ function loadPersisted(): Persisted {
       deviceHost: parsed.deviceHost ?? null,
       devicePort: parsed.devicePort ?? null,
       theme: parsed.theme ?? 'system',
-      silenceSeconds: typeof parsed.silenceSeconds === 'number' ? parsed.silenceSeconds : 10,
+      // 旧版本的默认值是 10s；用户没改过的升级成新的默认 30s
+      silenceSeconds:
+        parsed.silenceSeconds === 10
+          ? 30
+          : typeof parsed.silenceSeconds === 'number'
+            ? parsed.silenceSeconds
+            : 30,
       groups: parsed.groups ?? [],
     }
   } catch {
@@ -311,7 +317,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [micLevel, setMicLevel] = useState(0)
   /** 静默自动关麦（秒，0 = 关） */
   const [silenceSeconds, setSilenceSecondsState] = useState<number>(
-    persisted.silenceSeconds ?? 10,
+    persisted.silenceSeconds ?? 30,
   )
   /** 静默自动关麦的提示 */
   const [micAutoStopNotice, setMicAutoStopNotice] = useState<string | null>(null)
@@ -1084,7 +1090,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         {
           id,
           name: name.trim() || '新磁片组',
-          icon: 'Layers',
+          icon: 'Boxes',
           steps: [],
           intervalSeconds: 1,
         },

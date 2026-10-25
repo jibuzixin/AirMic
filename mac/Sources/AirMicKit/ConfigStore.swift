@@ -25,7 +25,7 @@ public struct AirMicConfig: Codable, Equatable {
         revision: Int = 0,
         outputDeviceId: String = "",
         bufferMs: Int = 60,
-        silenceSeconds: Int? = 10
+        silenceSeconds: Int? = 30
     ) {
         self.magnets = magnets
         self.presets = presets

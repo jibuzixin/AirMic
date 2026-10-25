@@ -155,3 +155,26 @@ html[data-theme='light'] {
   --color-connected: #128F5C;
   --color-recording: #D9423B;
 }
+
+/* ============================================================
+   触屏：禁用长按选择 / 系统长按菜单
+   手机上「长按磁贴」是产品交互，不能被系统的文字选择抢走。
+   ============================================================ */
+* {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+html,
+body {
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}

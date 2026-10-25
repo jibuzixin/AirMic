@@ -104,7 +104,7 @@ public final class AirMicServer: ObservableObject {
 
     public func start() throws {
         config = configStore.load()
-        silenceSecondsValue = config.silenceSeconds ?? 10
+        silenceSecondsValue = config.silenceSeconds ?? 30
         pairedDevices = pairingStore.allDevices()
         foregroundApp = foregroundWatcher.current
 
@@ -234,7 +234,7 @@ public final class AirMicServer: ObservableObject {
     }
 
     /// 静默自动关闭的秒数（0 = 关闭）
-    @Published public private(set) var silenceSecondsValue: Int = 10
+    @Published public private(set) var silenceSecondsValue: Int = 30
 
     public var silenceSeconds: Int { silenceSecondsValue }
 
@@ -402,9 +402,10 @@ public final class AirMicServer: ObservableObject {
         case Message.Kind.micStateReport:
             let mode = MicMode(rawValue: message.mode ?? "idle") ?? .idle
             Log.info("手机端麦克风状态：\(mode.rawValue)")
-            // 手机开始说话了：如果电脑端因为静默自动关掉了收音，这里自动恢复 ——
-            // 否则省电机制会变成「用户得手动再点一次开始收音」的负担。
-            if mode != .idle, !isRecording {
+            // 手机开始说话了：
+            //   - 静默自动关的收音 → 自动恢复（省电机制不该变成负担）
+            //   - **用户手动关的** → 不恢复，必须用户自己再点开始
+            if mode != .idle, !isRecording, !recordingStoppedByUser {
                 Log.info("手机端开始收音，自动恢复电脑端收音")
                 onMain { self.setRecording(true) }
             }

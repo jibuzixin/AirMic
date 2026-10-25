@@ -4,15 +4,16 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronLeft,
-  Layers,
+  Boxes,
   Play,
+  Search,
   Plus,
   Trash2,
   X,
 } from 'lucide-react'
 import { useAirmic } from '@/lib/airmic-store'
 import { useBackHandler } from '@/lib/back-stack'
-import type { HotkeyMagnet } from '@/lib/hotkey'
+import { magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
 import type { MagnetGroup } from '@/lib/airmic-data'
 import { tileIcon } from './icons'
 
@@ -56,7 +57,7 @@ export function MagnetGroupPage({ onBack }: { onBack: () => void }) {
             setDraft({
               id: `g-${Date.now().toString(36)}`,
               name: '新磁片组',
-              icon: 'Layers',
+              icon: 'Boxes',
               steps: [],
               intervalSeconds: 1,
             })
@@ -164,10 +165,18 @@ function GroupEditor({
   onCancel: () => void
   onSave: () => void
 }) {
-  const steps = draft.steps
-    .map((id) => magnets.find((m) => m.id === id))
-    .filter((m): m is HotkeyMagnet => m !== undefined)
-  const available = magnets.filter((m) => !draft.steps.includes(m.id))
+  const [query, setQuery] = useState('')
+  /** 保留空位（找不到的磁片）以维持索引与 draft.steps 对齐 */
+  const steps = draft.steps.map((id) => magnets.find((m) => m.id === id))
+  const keyword = query.trim().toLowerCase()
+  const candidates = keyword
+    ? magnets.filter((m) => m.label.toLowerCase().includes(keyword))
+    : magnets
+
+  const addStep = (magnetId: string) => {
+    // 允许重复：同一个磁片可以连着放好几次（比如连按几次撤销）
+    onChange({ ...draft, steps: [...draft.steps, magnetId] })
+  }
 
   const move = (index: number, delta: number) => {
     const next = [...draft.steps]
@@ -186,7 +195,7 @@ function GroupEditor({
       className="mb-3 rounded-xl border border-border-strong bg-surface-1 p-3"
     >
       <div className="flex items-center gap-2">
-        <Layers size={14} strokeWidth={1.8} className="text-text-secondary" />
+        <Boxes size={14} strokeWidth={1.8} className="text-text-secondary" />
         <input
           value={draft.name}
           onChange={(event) => onChange({ ...draft, name: event.target.value })}
@@ -245,9 +254,10 @@ function GroupEditor({
         </p>
       ) : (
         <ul className="mt-1.5 flex flex-col gap-1">
-          {steps.map((magnet, index) => (
+          {steps.map((magnet, index) =>
+            !magnet ? null : (
             <li
-              key={magnet.id}
+              key={`${magnet.id}-${index}`}
               className="flex items-center gap-1.5 rounded-[10px] bg-surface-2 px-2 py-1.5"
             >
               <span className="tabular w-4 text-[10px] text-text-faint">
@@ -281,11 +291,11 @@ function GroupEditor({
               </button>
               <button
                 type="button"
-                aria-label={`移除 ${magnet.label}`}
+                aria-label={`移除第 ${index + 1} 步`}
                 onClick={() =>
                   onChange({
                     ...draft,
-                    steps: draft.steps.filter((id) => id !== magnet.id),
+                    steps: draft.steps.filter((_, i) => i !== index),
                   })
                 }
                 className="grid size-6 place-items-center rounded text-text-tertiary"
@@ -293,27 +303,56 @@ function GroupEditor({
                 <X size={11} strokeWidth={2} />
               </button>
             </li>
-          ))}
+            ),
+          )}
         </ul>
       )}
 
-      {available.length > 0 && (
-        <div className="mt-2.5 flex flex-wrap gap-1.5">
-          {available.map((magnet) => (
-            <button
-              key={magnet.id}
-              type="button"
-              onClick={() =>
-                onChange({ ...draft, steps: [...draft.steps, magnet.id] })
-              }
-              className="flex items-center gap-1 rounded-full border border-border-subtle bg-surface-2 px-2.5 py-1 text-[11px] text-text-secondary active:scale-95"
-            >
-              <Plus size={10} strokeWidth={2} />
-              {magnet.label}
-            </button>
-          ))}
+      {/* 可选磁片：可搜索、可重复添加 */}
+      <div className="mt-2.5">
+        <div className="flex h-8 items-center gap-1.5 rounded-[10px] border border-border-subtle bg-surface-2 px-2.5">
+          <Search size={12} strokeWidth={1.8} className="text-text-tertiary" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索磁片，点一下加入"
+            aria-label="搜索磁片"
+            className="min-w-0 flex-1 bg-transparent text-[11px] text-text-primary outline-none placeholder:text-text-faint"
+          />
         </div>
-      )}
+        <div className="mt-1.5 max-h-[180px] overflow-y-auto rounded-[10px] border border-border-subtle bg-surface-2">
+          {candidates.length === 0 ? (
+            <p className="px-3 py-3 text-[11px] text-text-tertiary">
+              没有匹配的磁片
+            </p>
+          ) : (
+            candidates.map((magnet) => (
+              <button
+                key={magnet.id}
+                type="button"
+                onClick={() => addStep(magnet.id)}
+                className="flex h-9 w-full items-center gap-2 border-b border-border-subtle px-2.5 text-left last:border-b-0 active:bg-surface-3"
+              >
+                {createElement(tileIcon(magnet.icon), {
+                  size: 13,
+                  strokeWidth: 1.8,
+                  className: 'text-text-secondary',
+                })}
+                <span className="min-w-0 flex-1 truncate text-[11px] text-text-primary">
+                  {magnet.label}
+                </span>
+                <span className="tabular text-[10px] text-text-tertiary">
+                  {magnetKeys(magnet)}
+                </span>
+                <Plus size={12} strokeWidth={2} className="text-text-tertiary" />
+              </button>
+            ))
+          )}
+        </div>
+        <p className="mt-1 text-[10px] text-text-faint">
+          可以重复添加同一个磁片（比如连续撤销几次）。
+        </p>
+      </div>
 
       <button
         type="button"

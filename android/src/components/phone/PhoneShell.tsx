@@ -63,6 +63,7 @@ export function PhoneShell({
               ) : page === 'mic' ? (
                 <MicPage
                   onOpenPresets={() => setPage('preset')}
+                  onOpenSettings={() => setPage('settings')}
                   onEditMicBindings={() => setEditingId(activePresetId)}
                 />
               ) : page === 'preset' ? (
@@ -132,6 +133,7 @@ export function PhoneShell({
           ) : page === 'mic' ? (
             <MicPage
               onOpenPresets={() => setPage('preset')}
+              onOpenSettings={() => setPage('settings')}
               onEditMicBindings={() => setEditingId(activePresetId)}
             />
           ) : page === 'preset' ? (

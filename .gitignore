@@ -24,8 +24,5 @@ capacitor-cordova-android-plugins/
 # ── 开发期临时文件 ──
 tools/.fake-phone-token.json
 
-# ── 早期放错位置的插件副本（真正的代码在 android/android/app/…）──
-android/app/src/
-
 # 图标生成中间产物
 assets/build/

@@ -8,6 +8,11 @@ struct PanelView: View {
     @ObservedObject var state: AppState
     @State private var detailsExpanded = false
 
+    /// 面板右下角显示的版本号（用来确认跑的是哪一份构建）
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             statusRow
@@ -36,17 +41,29 @@ struct PanelView: View {
 
             Divider().overlay(Theme.borderSubtle)
 
-            Button("退出 AirMic") { state.quit() }
-                .buttonStyle(.plain)
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                Button("退出 AirMic") { state.quit() }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12))
+                    .foregroundStyle(Theme.textSecondary)
+
+                Spacer(minLength: 0)
+
+                Text("v\(appVersion)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(Theme.textFaint)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
         }
         .frame(width: 318)
-        .background(Theme.surface1)
+        // Apple 风格毛玻璃：跟随系统浅色 / 深色
+        .background(.regularMaterial)
         .foregroundStyle(Theme.textPrimary)
+        // 展开/收起详细设置时，内容高度平滑变化（不要瞬跳）
+        .animation(.spring(response: 0.30, dampingFraction: 0.86), value: detailsExpanded)
+        .animation(.spring(response: 0.30, dampingFraction: 0.86), value: state.pendingRequests.count)
+        .clipped()
         .onAppear {
             // 面板打开时刷新设备列表（设备可能被插拔）
             state.refreshDevices()
@@ -102,6 +119,7 @@ struct PanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 10)
+        .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
     // MARK: - 辅助功能权限
@@ -330,6 +348,7 @@ struct PanelView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }

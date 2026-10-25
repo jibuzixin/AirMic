@@ -9,6 +9,9 @@ import SwiftUI
 struct AirMacApp: App {
     @StateObject private var state = AppState()
 
+    /// 预览窗口要强引用，否则 ARC 立刻释放、窗口一闪而过
+    private static var previewWindow: NSWindow?
+
     init() {
         // 单实例：已经有一个 AirMic 在跑就直接退出。
         //
@@ -19,9 +22,40 @@ struct AirMacApp: App {
             .runningApplications(withBundleIdentifier: bundleID)
             .filter { $0.processIdentifier != getpid() }
         if let existing = others.first {
-            Log.info("已有 AirMic 在运行（pid \(existing.processIdentifier)），本次启动退出")
+            let path = existing.bundleURL?.path ?? "未知路径"
+            let current = Bundle.main.bundlePath
+            Log.error(
+                "已有 AirMic 在运行（pid \(existing.processIdentifier)）：\(path)；本次启动退出。" +
+                (path == current ? "" : "注意路径不同 —— 如果刚更新过版本，请先退出旧实例再启动新的。")
+            )
             existing.activate(options: [.activateIgnoringOtherApps])
             exit(0)
+        }
+
+        // 开发用：AIRMIC_PREVIEW=1 时额外开一个普通窗口显示面板，
+        // 方便截图检查浅色/深色、毛玻璃和展开动画（不影响正式行为）
+        if ProcessInfo.processInfo.environment["AIRMIC_PREVIEW"] == "1" {
+            let previewState = state
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+                let hosting = NSHostingView(rootView: PanelView(state: previewState))
+                hosting.setFrameSize(hosting.fittingSize)
+                let window = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 318, height: 400),
+                    styleMask: [.titled, .closable, .fullSizeContentView],
+                    backing: .buffered,
+                    defer: false
+                )
+                window.titlebarAppearsTransparent = true
+                window.titleVisibility = .hidden
+                window.isMovableByWindowBackground = true
+                window.contentView = hosting
+                // 固定位置，方便自动截图检查
+                window.setFrame(NSRect(x: 240, y: 260, width: 318, height: 416), display: true)
+                window.level = .floating
+                AirMacApp.previewWindow = window
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
         }
 
         // 菜单栏应用不该出现在 Dock / Cmd-Tab 里

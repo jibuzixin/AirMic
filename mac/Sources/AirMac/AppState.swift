@@ -46,6 +46,8 @@ final class AppState: ObservableObject {
     @Published private(set) var accessibilityGranted = HotkeyExecutor.hasAccessibilityPermission
     /// 用户点了「去授权」后的引导状态
     @Published var accessibilityHintShown = false
+    /// 「诊断日志已复制」的短暂提示
+    @Published var diagnosticsCopied = false
 
     // MARK: - 动作
 
@@ -115,6 +117,24 @@ final class AppState: ObservableObject {
     /// 1kHz 测试音
     func setTestTone(_ enabled: Bool) {
         server.setTestTone(enabled)
+    }
+
+    /// 把诊断日志复制到剪贴板（直接粘给开发看）
+    func copyDiagnostics() {
+        let report = Diag.report()
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(report, forType: .string)
+        Log.info("诊断报告已复制到剪贴板")
+        diagnosticsCopied = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+            self?.diagnosticsCopied = false
+        }
+    }
+
+    /// 打开日志所在文件夹
+    func openLogFolder() {
+        NSWorkspace.shared.open(Diag.logDirectory)
     }
 
     func refreshPairCode() {

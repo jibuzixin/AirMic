@@ -134,6 +134,23 @@ public final class AirMicServer: ObservableObject {
             guard let self, let receiver = self.audioReceiver else { return }
             let snapshot = receiver.stats(bufferMs: self.config.bufferMs)
             self.onMain { self.stats = snapshot }
+
+            // 诊断行：一眼看出卡在哪一环
+            //   recv=0        → 音频包根本没到电脑（手机/网络）
+            //   decoded=0     → 包到了但解不出来
+            //   rendered=0    → 解出来了但没写进设备
+            let debug = self.audioOutputDebug
+            Log.info(String(
+                format: "[AUDIO] recv=%d lost=%d decoded=%.1fs empty=%d rendered=%.1fs peak=%.2f queued=%d underrun=%d",
+                receiver.receivedPackets,
+                receiver.lostPackets,
+                Double(receiver.decodedFrames) / 48000.0,
+                receiver.emptyDecodes,
+                Double(debug.renderedFrames) / 48000.0,
+                debug.peak,
+                debug.queued,
+                debug.underruns
+            ))
         }
         // 放到主运行循环上（面板要看到它）
         RunLoop.main.add(timer, forMode: .common)
@@ -210,7 +227,11 @@ public final class AirMicServer: ObservableObject {
             audioReceiver = receiver
             try receiver.start()
 
-            try audioWriter.start(deviceID: resolveOutputDeviceID())
+            let deviceID = resolveOutputDeviceID()
+            let deviceName = AudioDeviceManager.outputDevices()
+                .first { $0.id == String(deviceID) }?.name ?? "未知设备"
+            Log.info("音频输出目标：\(deviceName)（id \(deviceID)）")
+            try audioWriter.start(deviceID: deviceID)
         } catch {
             Log.error("音频管线启动失败：\(error.localizedDescription)")
             audioReceiver = nil
@@ -350,6 +371,7 @@ public final class AirMicServer: ObservableObject {
             sendCurrentApp(to: client)
         case Message.Kind.micStateReport:
             let mode = MicMode(rawValue: message.mode ?? "idle") ?? .idle
+            Log.info("手机端麦克风状态：\(mode.rawValue)")
             onMain { self.phoneMicMode = mode }
         default:
             Log.debug("收到未识别的消息类型：\(message.type)")
@@ -444,6 +466,7 @@ public final class AirMicServer: ObservableObject {
 
     private func handleConfig(_ message: Message, client: ClientConnection) {
         guard let magnets = message.magnets, let presets = message.presets else { return }
+        Log.info("收到配置：磁铁 \(magnets.count) 个，预案 \(presets.count) 套")
         let updated = configStore.apply(magnets: magnets, presets: presets)
         config = updated
         var ack = Message(type: Message.Kind.configAck)

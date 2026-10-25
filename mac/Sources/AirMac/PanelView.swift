@@ -307,6 +307,21 @@ struct PanelView: View {
                     }
                     .toggleStyle(.switch)
                     .controlSize(.mini)
+
+                    // 排查用：把现场数据一键交付
+                    HStack(spacing: 8) {
+                        Button(state.diagnosticsCopied ? "已复制" : "复制诊断日志") {
+                            state.copyDiagnostics()
+                        }
+                        .buttonStyle(PanelActionButtonStyle(isPrimary: false))
+
+                        Button("打开日志文件夹") {
+                            state.openLogFolder()
+                        }
+                        .buttonStyle(PanelActionButtonStyle(isPrimary: false))
+
+                        Spacer(minLength: 0)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)

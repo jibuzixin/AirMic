@@ -1,4 +1,5 @@
 import AirMicKit
+import CoreAudio
 import Foundation
 import Network
 
@@ -25,6 +26,7 @@ func usage() {
       airmicd devices              列出已配对设备
       airmicd config               打印当前配置（磁铁 / 预案）
       airmicd audio-devices        列出系统音频输出设备
+      airmicd loopback-test [设备] 往虚拟设备写测试音再读回来（验证回环）
       airmicd tone [主机] [端口] [秒数]  发一段测试音（验证音频链路）
       airmicd simulate-app <名称>  模拟一次前台应用切换（测试预案自动切换）
     """)
@@ -100,6 +102,14 @@ case "audio-devices":
     for device in list {
         print("\(device.id)  \(device.name)\(device.isVirtual ? "  [虚拟]" : "")")
     }
+
+case "loopback-test":
+    // 把 440Hz 写进虚拟设备，再从它的输入读回来 —— 验证「写 → 设备 → 读」整条回路
+    //
+    // 用法：airmicd loopback-test [设备名关键字或 id]
+    // 默认挑第一个名字里带 BlackHole / Loopback 的设备
+    let target = arguments.count > 1 ? arguments[1] : nil
+    runLoopbackTest(matching: target)
 
 case "aactest":
     // 编解码自测：PCM → AAC → PCM，不经过网络
@@ -228,4 +238,65 @@ func sendTone(host: String, port: UInt16, seconds: Double) throws {
     if let sendError {
         print("发送出错：\(sendError.localizedDescription)")
     }
+}
+
+
+/// 回环自测：写 440Hz 进设备，再从设备输入读回来
+func runLoopbackTest(matching keyword: String?) {
+    let devices = AudioDeviceManager.outputDevices()
+    guard !devices.isEmpty else {
+        print("系统里没有任何音频输出设备")
+        exit(1)
+    }
+
+    let device: AudioDevice?
+    if let keyword {
+        device = devices.first {
+            $0.id == keyword || $0.name.localizedCaseInsensitiveContains(keyword)
+        }
+    } else {
+        device = devices.first { $0.isVirtual } ?? devices.first
+    }
+    guard let device else {
+        print("找不到设备：\(keyword ?? "")")
+        print("可用设备：")
+        for item in devices { print("  \(item.id)  \(item.name)") }
+        exit(1)
+    }
+    guard let numericID = UInt32(device.id) else {
+        print("设备 id 不是数字：\(device.id)")
+        exit(1)
+    }
+
+    print("目标设备：\(device.name)（id \(device.id)）")
+
+    let writer = VirtualAudioWriter(capacityFrames: 48000)
+    let probe = LoopbackProbe()
+    do {
+        try writer.start(deviceID: AudioDeviceID(numericID))
+        writer.setTestTone(true)
+        try probe.start(deviceID: AudioDeviceID(numericID))
+
+        print("正在写测试音 2.5 秒…")
+        Thread.sleep(forTimeInterval: 2.5)
+
+        probe.stop()
+        writer.stop()
+    } catch {
+        print("自测失败：\(error.localizedDescription)")
+        probe.stop()
+        writer.stop()
+        exit(1)
+    }
+
+    print(String(
+        format: "读回：回调 %d 次，%d 帧，峰值 %.3f",
+        probe.callbackCount, probe.frameCount, probe.peak
+    ))
+
+    if probe.peak < 0.02 {
+        print("❌ 回环里没读到声音 —— 设备写了但没出来（或读的是另一端）")
+        exit(2)
+    }
+    print("✅ 回环正常：写进去的声音能在设备输入端读到")
 }

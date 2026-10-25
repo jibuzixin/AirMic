@@ -32,6 +32,8 @@ public final class AudioReceiver {
     private(set) var receivedPackets = 0
     /// 已解码出的采样数
     private(set) var decodedFrames = 0
+    /// 解码为空的次数（编码器 priming 也会计入）
+    private(set) var emptyDecodes = 0
     private(set) var lostPackets = 0
     private(set) var underruns = 0
     private(set) var jitterMs: Double?
@@ -115,6 +117,9 @@ public final class AudioReceiver {
             return (UInt32(bytes[2]) << 24) | (UInt32(bytes[3]) << 16) | (UInt32(bytes[4]) << 8) | UInt32(bytes[5])
         }
 
+        if receivedPackets == 0 {
+            Log.info("收到第一包音频：\(data.count) 字节（AU \(payload.count) 字节）")
+        }
         receivedPackets += 1
 
         // 丢包统计：序号跳变
@@ -142,6 +147,12 @@ public final class AudioReceiver {
 
         // 解码并写入
         let pcm = decoder.decode(Data(payload))
+        if pcm.isEmpty {
+            emptyDecodes += 1
+            if emptyDecodes <= 3 || emptyDecodes % 100 == 0 {
+                Log.debug("解码为空（第 \(emptyDecodes) 次）")
+            }
+        }
         if pcm.isEmpty {
             // 前几帧是编码器 priming，不算欠载
             return

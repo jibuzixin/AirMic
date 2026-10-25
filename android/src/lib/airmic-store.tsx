@@ -228,6 +228,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [pairingDevice, setPairingDevice] = useState<Device | null>(null)
   /** 真实麦克风电平（0–1）—— 电平表用这个，不再是假数据 */
   const [micLevel, setMicLevel] = useState(0)
+  /** 长按说话时按下的组合键（松开时要还原） */
+  const heldComboRef = useRef<string[] | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const noticeSeq = useRef(0)
   /** 本机设备信息（原生侧生成，JS 侧发消息时必须带同一个 deviceId） */
@@ -631,29 +633,76 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     }
   }, [serverRunning])
 
+  /**
+   * 当前预案里麦克风按钮绑定的磁铁
+   *
+   * ⚠️ 这是「麦克风按钮自己的绑定」，和底部独立磁贴是两件事。
+   */
+  const presetMagnet = useCallback(
+    (which: 'press' | 'release') => {
+      const preset = presets.find((p) => p.id === activePresetId)
+      const id = which === 'press' ? preset?.micPressId : preset?.micReleaseId
+      if (!id) return null
+      return magnets.find((m) => m.id === id) ?? null
+    },
+    [activePresetId, magnets, presets],
+  )
+
+  /**
+   * 点按语义：开 / 关各触发一次（按下 → 抬起）
+   */
+  const fireTap = useCallback(
+    (magnet: HotkeyMagnet | null) => {
+      if (!magnet) return
+      const combo = magnetCombo(magnet)
+      if (combo.length === 0) return
+      send({ type: 'hotkey.execute', combo })
+    },
+    [send],
+  )
+
   const toggleContinuous = useCallback(() => {
-    setMicMode((m) => {
-      if (m === 'ptt') return m
-      if (m === 'continuous') {
-        stopCapture()
-        return 'idle'
-      }
-      warnIfServerIdle()
-      void beginCapture('continuous')
-      return 'continuous'
-    })
-  }, [beginCapture, stopCapture, warnIfServerIdle])
+    if (micMode === 'ptt') return
+    if (micMode === 'continuous') {
+      stopCapture()
+      // 关闭麦克风 → 触发「松开」磁铁
+      fireTap(presetMagnet('release'))
+      setMicMode('idle')
+      return
+    }
+    warnIfServerIdle()
+    // 打开麦克风 → 触发「按下」磁铁
+    fireTap(presetMagnet('press'))
+    void beginCapture('continuous')
+    setMicMode('continuous')
+  }, [beginCapture, fireTap, micMode, presetMagnet, stopCapture, warnIfServerIdle])
 
   const startPushToTalk = useCallback(() => {
+    if (micMode === 'ptt') return
     warnIfServerIdle()
+    // 长按语义：按下组合键但**不松开**，等手指抬起来才还原
+    const magnet = presetMagnet('press')
+    if (magnet) {
+      const combo = magnetCombo(magnet)
+      if (combo.length > 0) {
+        heldComboRef.current = combo
+        send({ type: 'hotkey.down', combo })
+      }
+    }
     setMicMode('ptt')
     void beginCapture('ptt')
-  }, [beginCapture, warnIfServerIdle])
+  }, [beginCapture, micMode, presetMagnet, send, warnIfServerIdle])
 
   const endPushToTalk = useCallback(() => {
-    setMicMode((m) => (m === 'ptt' ? 'idle' : m))
+    if (micMode !== 'ptt') return
+    // 松开手指 → 松开组合键
+    if (heldComboRef.current) {
+      send({ type: 'hotkey.up', combo: heldComboRef.current })
+      heldComboRef.current = null
+    }
+    setMicMode('idle')
     stopCapture()
-  }, [stopCapture])
+  }, [micMode, send, stopCapture])
 
   const dismissMicBlocked = useCallback(() => setMicBlockedNotice(null), [])
   const dismissRemoteError = useCallback(() => setRemoteError(null), [])

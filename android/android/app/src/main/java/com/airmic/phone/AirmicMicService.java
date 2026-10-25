@@ -136,8 +136,12 @@ public class AirmicMicService extends Service {
     }
 
     public static void stop(Context context) {
-        Intent intent = new Intent(context, AirmicMicService.class);
-        intent.setAction(ACTION_STOP);
-        context.startService(intent);
+        try {
+            // 直接停服务，不走 onStartCommand ——
+            // 后台状态下 startService 会抛 IllegalStateException（Android 8+）
+            context.stopService(new Intent(context, AirmicMicService.class));
+        } catch (Exception e) {
+            Log.w(TAG, "停止服务失败：" + e.getMessage());
+        }
     }
 }

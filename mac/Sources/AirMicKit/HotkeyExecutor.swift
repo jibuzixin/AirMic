@@ -7,7 +7,7 @@ import Foundation
 ///
 /// ⚠️ CGEvent 需要**辅助功能权限**（Accessibility）。没有权限时 CGEvent 会被系统
 /// 静默丢弃 —— 所以必须先检查，并且明确告诉用户去哪儿开。
-public struct HotkeyExecutor {
+public final class HotkeyExecutor {
     public init() {}
 
     /// 是否有辅助功能权限
@@ -20,6 +20,78 @@ public struct HotkeyExecutor {
     public static func requestAccessibilityPermission() -> Bool {
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         return AXIsProcessTrustedWithOptions(options)
+    }
+
+    /// 长按语义：按下的组合键（等 release 时才松开）
+    private var held: (keyCode: CGKeyCode, flags: CGEventFlags)?
+
+    /// 按下组合键但不松开（长按说话用）
+    @discardableResult
+    public func press(combo: [String], target: NSRunningApplication? = nil) -> Bool {
+        guard !combo.isEmpty else { return false }
+        guard Self.hasAccessibilityPermission else {
+            Log.error("没有辅助功能权限，快捷键无法执行")
+            return false
+        }
+        activate(target)
+        guard let resolved = Self.resolve(combo) else {
+            Log.error("不认识的组合键：\(combo.joined(separator: "+"))")
+            return false
+        }
+
+        let down = CGEvent(keyboardEventSource: nil, virtualKey: resolved.keyCode, keyDown: true)
+        down?.flags = resolved.flags
+        down?.post(tap: .cghidEventTap)
+        held = (resolved.keyCode, resolved.flags)
+        Log.info("按下组合键：\(combo.joined(separator: "+"))")
+        return true
+    }
+
+    /// 松开之前按下的组合键
+    @discardableResult
+    public func release() -> Bool {
+        guard let held else { return false }
+        let up = CGEvent(keyboardEventSource: nil, virtualKey: held.keyCode, keyDown: false)
+        up?.flags = held.flags
+        up?.post(tap: .cghidEventTap)
+        self.held = nil
+        Log.info("松开组合键")
+        return true
+    }
+
+    /// 把焦点交回前台应用，并等它真的切过去
+    private func activate(_ target: NSRunningApplication?) {
+        guard let target else { return }
+        if Thread.isMainThread {
+            target.activate(options: [.activateIgnoringOtherApps])
+        } else {
+            DispatchQueue.main.async {
+                target.activate(options: [.activateIgnoringOtherApps])
+            }
+        }
+        let deadline = Date().addingTimeInterval(0.4)
+        while !target.isActive && Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        Thread.sleep(forTimeInterval: 0.03)
+    }
+
+    /// 组合键 → 键码 + 修饰键标志
+    static func resolve(_ combo: [String]) -> (keyCode: CGKeyCode, flags: CGEventFlags)? {
+        var flags: CGEventFlags = []
+        var mainKey: String?
+        for token in combo {
+            switch token {
+            case "cmd": flags.insert(.maskCommand)
+            case "shift": flags.insert(.maskShift)
+            case "ctrl": flags.insert(.maskControl)
+            case "alt": flags.insert(.maskAlternate)
+            default:
+                if mainKey == nil { mainKey = token }
+            }
+        }
+        guard let mainKey, let keyCode = keyCode(for: mainKey) else { return nil }
+        return (keyCode, flags)
     }
 
     /// 执行一组组合键，如 ["cmd", "shift", "v"]
@@ -41,20 +113,7 @@ public struct HotkeyExecutor {
         //
         // ⚠️ activate 要回主线程调用，且它本身是异步的 —— 等它真的切过去再发按键，
         // 否则按键还是会落到 AirMic 自己身上。
-        if let target {
-            if Thread.isMainThread {
-                target.activate(options: [.activateIgnoringOtherApps])
-            } else {
-                DispatchQueue.main.async {
-                    target.activate(options: [.activateIgnoringOtherApps])
-                }
-            }
-            let deadline = Date().addingTimeInterval(0.4)
-            while !target.isActive && Date() < deadline {
-                Thread.sleep(forTimeInterval: 0.02)
-            }
-            Thread.sleep(forTimeInterval: 0.03)
-        }
+        activate(target)
 
         // 鼠标键与键盘主键互斥
         if let mouse = combo.last, mouse.hasPrefix("mouse") || mouse.hasPrefix("wheel") {

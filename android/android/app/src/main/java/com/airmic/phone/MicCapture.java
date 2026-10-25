@@ -59,39 +59,77 @@ public class MicCapture {
     /** 音频 UDP 端口（与控制端口分开，见 shared/protocol.md） */
     public static final int AUDIO_PORT = 47472;
 
-    private Thread worker;
+    private volatile Thread worker;
     private volatile boolean running = false;
     private volatile String mode = "idle";
 
-    private AudioRecord audioRecord;
-    private MediaCodec encoder;
-    private DatagramSocket socket;
+    /**
+     * 原生资源（AudioRecord / MediaCodec / Socket）。
+     *
+     * <p>⚠️ 生命周期全部走 {@link #lifecycle} 锁：**先让工作线程退出，再释放**。
+     * 之前是在调用线程上直接 release，而工作线程可能还在读 AudioRecord ——
+     * 快速反复点按麦克风时两边同时释放原生资源，直接把进程搞崩。
+     */
+    private final Object lifecycle = new Object();
+    private volatile AudioRecord audioRecord;
+    private volatile MediaCodec encoder;
+    private volatile DatagramSocket socket;
     private InetAddress target;
     private int targetPort;
 
     private int sequence = 0;
 
     /** 开始采集。mode: continuous（常开）/ ptt（瞬时说话） */
-    public synchronized void start(String mode, String host, int port) throws IOException {
-        stop();
-        this.mode = mode;
-        this.target = InetAddress.getByName(host);
-        this.targetPort = port;
-        running = true;
+    public void start(String mode, String host, int port) throws IOException {
+        synchronized (lifecycle) {
+            stopLocked();
+            this.mode = mode;
+            this.target = InetAddress.getByName(host);
+            this.targetPort = port;
+            this.running = true;
 
-        worker = new Thread(this::loop, "airmic-mic");
-        worker.setDaemon(true);
-        worker.start();
+            Thread thread = new Thread(this::loop, "airmic-mic");
+            thread.setDaemon(true);
+            worker = thread;
+            thread.start();
+        }
     }
 
-    public synchronized void stop() {
-        running = false;
-        if (worker != null) {
-            worker.interrupt();
-            worker = null;
+    /** 停止采集（等线程退出后再释放资源） */
+    public void stop() {
+        synchronized (lifecycle) {
+            stopLocked();
         }
-        releaseAudio();
-        releaseEncoder();
+    }
+
+    private void stopLocked() {
+        running = false;
+        mode = "idle";
+
+        // 先让阻塞中的 read() 返回
+        AudioRecord record = audioRecord;
+        if (record != null) {
+            try {
+                if (record.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    record.stop();
+                }
+            } catch (Exception ignored) {
+                // 已经停了
+            }
+        }
+
+        Thread thread = worker;
+        if (thread != null && thread != Thread.currentThread()) {
+            try {
+                thread.join(800);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
+        worker = null;
+
+        // 线程正常退出时自己会释放；这里兜底（release 是幂等的）
+        releaseAll();
     }
 
     public boolean isRunning() {
@@ -107,6 +145,7 @@ public class MicCapture {
             socket = new DatagramSocket();
         } catch (IOException e) {
             Log.e(TAG, "UDP socket 创建失败：" + e.getMessage());
+            running = false;
             return;
         }
 
@@ -117,9 +156,8 @@ public class MicCapture {
         } catch (Exception e) {
             Log.e(TAG, "采集失败：" + e.getMessage());
         } finally {
-            releaseAudio();
-            releaseEncoder();
             running = false;
+            releaseAll();
         }
     }
 
@@ -172,35 +210,56 @@ public class MicCapture {
     private void pump() {
         MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
         long startNanos = System.nanoTime();
+        AudioRecord record = audioRecord;
+        MediaCodec codec = encoder;
+        if (record == null || codec == null) return;
 
         while (running) {
             // --- 读一帧 PCM ---
             short[] pcm = new short[FRAME_SAMPLES * CHANNELS];
-            int read = audioRecord.read(pcm, 0, pcm.length);
+            int read;
+            try {
+                read = record.read(pcm, 0, pcm.length);
+            } catch (Exception e) {
+                Log.w(TAG, "读取失败：" + e.getMessage());
+                break;
+            }
             if (read <= 0) continue;
 
             // --- 真实电平（RMS），给界面上的电平表用 ---
             notifyLevel(pcm, read);
 
             // --- 喂给编码器 ---
-            int inputIndex = encoder.dequeueInputBuffer(10_000);
+            int inputIndex;
+            try {
+                inputIndex = codec.dequeueInputBuffer(10_000);
+            } catch (Exception e) {
+                Log.w(TAG, "编码器已释放：" + e.getMessage());
+                break;
+            }
             if (inputIndex >= 0) {
-                ByteBuffer inputBuffer = encoder.getInputBuffer(inputIndex);
+                ByteBuffer inputBuffer = codec.getInputBuffer(inputIndex);
                 if (inputBuffer != null) {
                     inputBuffer.clear();
                     for (int i = 0; i < read; i++) {
                         inputBuffer.putShort(pcm[i]);
                     }
-                    encoder.queueInputBuffer(
+                    codec.queueInputBuffer(
                         inputIndex, 0, read * 2, System.nanoTime() / 1000, 0);
                 }
             }
 
             // --- 取编码结果 ---
-            int outputIndex = encoder.dequeueOutputBuffer(info, 10_000);
+            int outputIndex;
+            try {
+                outputIndex = codec.dequeueOutputBuffer(info, 10_000);
+            } catch (Exception e) {
+                Log.w(TAG, "编码器已释放：" + e.getMessage());
+                break;
+            }
             while (outputIndex >= 0) {
                 if (info.size > 0) {
-                    ByteBuffer encoded = encoder.getOutputBuffer(outputIndex);
+                    ByteBuffer encoded = codec.getOutputBuffer(outputIndex);
                     if (encoded != null) {
                         encoded.position(info.offset);
                         encoded.limit(info.offset + info.size);
@@ -209,8 +268,8 @@ public class MicCapture {
                         sendFrame(payload, startNanos);
                     }
                 }
-                encoder.releaseOutputBuffer(outputIndex, false);
-                outputIndex = encoder.dequeueOutputBuffer(info, 0);
+                codec.releaseOutputBuffer(outputIndex, false);
+                outputIndex = codec.dequeueOutputBuffer(info, 0);
             }
         }
     }
@@ -256,29 +315,45 @@ public class MicCapture {
         listener.onLevel(level);
     }
 
-    private void releaseAudio() {
-        if (audioRecord != null) {
+    /** 幂等释放（可能被工作线程和 stop() 各调用一次） */
+    private synchronized void releaseAll() {
+        AudioRecord record = audioRecord;
+        audioRecord = null;
+        if (record != null) {
             try {
-                if (audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
-                    audioRecord.stop();
+                if (record.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    record.stop();
                 }
-            } catch (IllegalStateException ignored) {
+            } catch (Exception ignored) {
                 // 已经停了
             }
-            audioRecord.release();
-            audioRecord = null;
+            try {
+                record.release();
+            } catch (Exception ignored) {
+                // 已经释放
+            }
+        }
+
+        MediaCodec codec = encoder;
+        encoder = null;
+        if (codec != null) {
+            try {
+                codec.stop();
+            } catch (Exception ignored) {
+                // 已经停了
+            }
+            try {
+                codec.release();
+            } catch (Exception ignored) {
+                // 已经释放
+            }
+        }
+
+        DatagramSocket datagram = socket;
+        socket = null;
+        if (datagram != null) {
+            datagram.close();
         }
     }
 
-    private void releaseEncoder() {
-        if (encoder != null) {
-            try {
-                encoder.stop();
-                encoder.release();
-            } catch (IllegalStateException ignored) {
-                // 已经释放了
-            }
-            encoder = null;
-        }
-    }
 }

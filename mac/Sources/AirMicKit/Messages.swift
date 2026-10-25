@@ -86,6 +86,10 @@ public struct Message: Codable, Equatable {
         static let configAck = "config.ack"
 
         static let hotkeyExecute = "hotkey.execute"
+        /// 长按语义：按下组合键（不松开）
+        static let hotkeyDown = "hotkey.down"
+        /// 长按语义：松开组合键
+        static let hotkeyUp = "hotkey.up"
         static let micStateReport = "mic.state.report"
 
         static let appsRequest = "apps.request"

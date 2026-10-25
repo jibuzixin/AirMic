@@ -346,23 +346,20 @@ public final class AirMicServer: ObservableObject {
             handlePairCode(message, client: client)
         case Message.Kind.hotkeyExecute:
             guard let combo = message.combo else { return }
-            // 没有辅助功能权限时 CGEvent 会被系统静默丢弃 —— 要明确告诉用户
-            if !HotkeyExecutor.hasAccessibilityPermission {
-                var failure = Message(type: "hotkey.error")
-                failure.reason = "电脑端没有「辅助功能」权限，快捷键发不出去。到「系统设置 → 隐私与安全性 → 辅助功能」里打开 AirMic"
-                client.send(failure)
-                Log.error("快捷键未执行：缺少辅助功能权限")
-                return
+            guard requireAccessibility(client: client) else { return }
+            if !hotkeyExecutor.execute(combo: combo, target: targetApplication()) {
+                sendHotkeyError(client: client, reason: "这个快捷键在电脑上执行失败了，检查一下按键设置")
             }
-            // 发给当前前台应用（不然会发到 AirMic 自己头上）
-            let target = foregroundApp.pid > 0
-                ? NSRunningApplication(processIdentifier: foregroundApp.pid)
-                : nil
-            if !hotkeyExecutor.execute(combo: combo, target: target) {
-                var failure = Message(type: "hotkey.error")
-                failure.reason = "这个快捷键在电脑上执行失败了，检查一下按键设置"
-                client.send(failure)
+        case Message.Kind.hotkeyDown:
+            // 长按语义：按下组合键，等 hotkey.up 才松开
+            guard let combo = message.combo else { return }
+            guard requireAccessibility(client: client) else { return }
+            if !hotkeyExecutor.press(combo: combo, target: targetApplication()) {
+                sendHotkeyError(client: client, reason: "这个快捷键在电脑上执行失败了，检查一下按键设置")
             }
+        case Message.Kind.hotkeyUp:
+            guard requireAccessibility(client: client) else { return }
+            hotkeyExecutor.release()
         case Message.Kind.configPush, Message.Kind.configUpdate:
             handleConfig(message, client: client)
         case Message.Kind.appsRequest:
@@ -522,6 +519,31 @@ public final class AirMicServer: ObservableObject {
             onMain { self.activePreset = next }
             sendActivePreset(next, appName: app.name, fallback: isFallback)
         }
+    }
+
+    /// 当前要接收快捷键的应用（不给 AirMic 自己）
+    private func targetApplication() -> NSRunningApplication? {
+        guard foregroundApp.pid > 0 else { return nil }
+        return NSRunningApplication(processIdentifier: foregroundApp.pid)
+    }
+
+    /// 检查辅助功能权限；没有就回一条错误
+    private func requireAccessibility(client: ClientConnection) -> Bool {
+        guard HotkeyExecutor.hasAccessibilityPermission else {
+            sendHotkeyError(
+                client: client,
+                reason: "电脑端没有「辅助功能」权限，快捷键发不出去。到「系统设置 → 隐私与安全性 → 辅助功能」里打开 AirMic"
+            )
+            Log.error("快捷键未执行：缺少辅助功能权限")
+            return false
+        }
+        return true
+    }
+
+    private func sendHotkeyError(client: ClientConnection, reason: String) {
+        var failure = Message(type: "hotkey.error")
+        failure.reason = reason
+        client.send(failure)
     }
 
     /// 记下这个应用（用户需求：电脑端记录每一次打开过的不同应用）

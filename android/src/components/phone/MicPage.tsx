@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, SlidersHorizontal, RefreshCw, Settings } from 'lucide-react'
+import { SlidersHorizontal, RefreshCw, Settings } from 'lucide-react'
 import { LevelRing } from '@/components/LevelRing'
 import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
@@ -159,44 +159,6 @@ export function MicPage({
     [magnets, preset?.micHoldId],
   )
 
-  /* ---------- 电脑端没在收音时的提醒 ---------- */
-
-  /**
-   * 电脑端菜单栏点「停止收音」后，手机这边说话传不过去。
-   * 用户按下麦克风的那一瞬间：震一下 + 顶部一条细提示条。
-   * 提示条不打断收音 —— 用户可能已经在说话了，不能把他的动作打断。
-   */
-  const [captureBlocked, setCaptureBlocked] = useState(false)
-  const blockedTimer = useRef<number | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (blockedTimer.current) window.clearTimeout(blockedTimer.current)
-    }
-  }, [])
-
-  const notifyCaptureBlocked = useCallback(() => {
-    // 只有「用户手动关掉了电脑端收音」才提醒；
-    // 静默自动关的情况下电脑会自动恢复，不该吓唬用户
-    if (!shouldWarnServerIdle) return
-    haptic('warn')
-    setCaptureBlocked(true)
-    if (blockedTimer.current) window.clearTimeout(blockedTimer.current)
-    blockedTimer.current = window.setTimeout(() => setCaptureBlocked(false), 3000)
-  }, [haptic, shouldWarnServerIdle])
-
-  /** 点按 = 常开收音；只有从 idle 切进来才算「开始收音」 */
-  const handleToggleContinuous = useCallback(() => {
-    if (micMode === 'idle') notifyCaptureBlocked()
-    toggleContinuous()
-  }, [micMode, notifyCaptureBlocked, toggleContinuous])
-
-  /** 长按 = 瞬时说话，起手就要提醒 */
-  const handlePushToTalkStart = useCallback(() => {
-    notifyCaptureBlocked()
-    startPushToTalk()
-  }, [notifyCaptureBlocked, startPushToTalk])
-
   /* ---------- 磁贴 ---------- */
 
   const handleFire = useCallback(
@@ -325,38 +287,7 @@ export function MicPage({
         )}
       </header>
 
-      {/* ---------- 电脑端没在收音的提醒条 ----------
-          绝对定位：出现和消失都不改变布局 —— 用户可能正按着麦克风说话，
-          布局一变按钮就会从手指底下挪走。也不遮挡电平表。 */}
-      <AnimatePresence>
-        {captureBlocked && (
-          <motion.div
-            key="capture-blocked"
-            initial={{ opacity: 0, y: -4 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -4 }}
-            transition={fadeFast}
-            className="pointer-events-none absolute inset-x-0 top-[72px] z-20 px-4"
-          >
-            <div className="flex items-start gap-2 rounded-xl border border-border-subtle bg-surface-2 px-3 py-2">
-              <AlertTriangle
-                size={13}
-                strokeWidth={1.8}
-                className="mt-[3px] shrink-0"
-                style={{ color: 'var(--color-recording)' }}
-              />
-              <div className="min-w-0">
-                <p className="text-[11px] leading-tight text-text-secondary">
-                  电脑端没有在收音，声音传不过去
-                </p>
-                <p className="mt-0.5 text-[10px] leading-tight text-text-tertiary">
-                  在电脑端点「开始收音」后再说话
-                </p>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
 
       {/* ---------- 电平表 + 麦克风按钮 ---------- */}
       <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3">
@@ -368,8 +299,8 @@ export function MicPage({
               mode={micMode}
               size={150}
               showLabel={false}
-              onToggleContinuous={handleToggleContinuous}
-              onPushToTalkStart={handlePushToTalkStart}
+              onToggleContinuous={toggleContinuous}
+              onPushToTalkStart={startPushToTalk}
               onPushToTalkEnd={endPushToTalk}
             />
           </div>

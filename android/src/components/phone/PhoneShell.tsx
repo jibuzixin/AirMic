@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Signal, Wifi } from 'lucide-react'
 import { AnimatePresence } from 'framer-motion'
 import { useAirmic } from '@/lib/airmic-store'
@@ -31,9 +31,18 @@ export function PhoneShell({
   mode?: 'frame' | 'full'
 }) {
   const { paired, presets, activePresetId } = useAirmic()
-  const [page, setPage] = useState<
-    'mic' | 'preset' | 'settings' | 'magnets' | 'groups'
-  >('mic')
+  type Page = 'mic' | 'preset' | 'settings' | 'magnets' | 'groups'
+  // 页面栈：返回时回到**来源页**，而不是固定的上一级
+  const [history, setHistory] = useState<Page[]>(['mic'])
+  const page = history[history.length - 1]
+  const navigate = useCallback((next: Page) => {
+    setHistory((stack) =>
+      stack[stack.length - 1] === next ? stack : [...stack, next],
+    )
+  }, [])
+  const goBack = useCallback(() => {
+    setHistory((stack) => (stack.length > 1 ? stack.slice(0, -1) : stack))
+  }, [])
   /** 正在编辑的预案 id；null = 抽屉关闭 */
   const [editingId, setEditingId] = useState<string | null>(null)
   /** 二级弹层（磁片选择器 / 磁片编辑器）的挂载点 */
@@ -45,7 +54,7 @@ export function PhoneShell({
   const [wasPaired, setWasPaired] = useState(paired)
   if (paired !== wasPaired) {
     setWasPaired(paired)
-    if (paired) setPage('mic')
+    if (paired) setHistory(['mic'])
   }
 
   const editing = editingId
@@ -62,26 +71,26 @@ export function PhoneShell({
                 <DevicePage />
               ) : page === 'mic' ? (
                 <MicPage
-                  onOpenPresets={() => setPage('preset')}
-                  onOpenSettings={() => setPage('settings')}
+                  onOpenPresets={() => navigate('preset')}
+                  onOpenSettings={() => navigate('settings')}
                   onEditMicBindings={() => setEditingId(activePresetId)}
                 />
               ) : page === 'preset' ? (
                 <PresetPage
-                  onBack={() => setPage('mic')}
+                  onBack={goBack}
                   onEditPreset={(id) => setEditingId(id)}
-                  onOpenSettings={() => setPage('settings')}
+                  onOpenSettings={() => navigate('settings')}
                 />
               ) : page === 'settings' ? (
                 <SettingsPage
-                  onBack={() => setPage('preset')}
-                  onOpenMagnets={() => setPage('magnets')}
-                  onOpenGroups={() => setPage('groups')}
+                  onBack={goBack}
+                  onOpenMagnets={() => navigate('magnets')}
+                  onOpenGroups={() => navigate('groups')}
                 />
               ) : page === 'magnets' ? (
-                <MagnetLibraryPage onBack={() => setPage('settings')} />
+                <MagnetLibraryPage onBack={goBack} />
               ) : (
-                <MagnetGroupPage onBack={() => setPage('settings')} />
+                <MagnetGroupPage onBack={goBack} />
               )}
             </div>
 
@@ -132,26 +141,26 @@ export function PhoneShell({
             <DevicePage />
           ) : page === 'mic' ? (
             <MicPage
-              onOpenPresets={() => setPage('preset')}
-              onOpenSettings={() => setPage('settings')}
+              onOpenPresets={() => navigate('preset')}
+              onOpenSettings={() => navigate('settings')}
               onEditMicBindings={() => setEditingId(activePresetId)}
             />
           ) : page === 'preset' ? (
             <PresetPage
-              onBack={() => setPage('mic')}
+              onBack={goBack}
               onEditPreset={(id) => setEditingId(id)}
-              onOpenSettings={() => setPage('settings')}
+              onOpenSettings={() => navigate('settings')}
             />
           ) : page === 'settings' ? (
             <SettingsPage
-              onBack={() => setPage('preset')}
-              onOpenMagnets={() => setPage('magnets')}
-              onOpenGroups={() => setPage('groups')}
+              onBack={goBack}
+              onOpenMagnets={() => navigate('magnets')}
+              onOpenGroups={() => navigate('groups')}
             />
           ) : page === 'magnets' ? (
-            <MagnetLibraryPage onBack={() => setPage('settings')} />
+            <MagnetLibraryPage onBack={goBack} />
           ) : (
-            <MagnetGroupPage onBack={() => setPage('settings')} />
+            <MagnetGroupPage onBack={goBack} />
           )}
         </div>
 

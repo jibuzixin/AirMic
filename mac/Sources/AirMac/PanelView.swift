@@ -253,6 +253,8 @@ struct PanelView: View {
 
             statsGrid
 
+            Divider().overlay(Theme.borderSubtle)
+
             HStack(spacing: 8) {
                 Text("抖动缓冲")
                     .font(.system(size: 11))
@@ -318,29 +320,29 @@ struct PanelView: View {
         }
     }
 
-    /// 四个统计指标。拿不到真实数据就显示 `[--]` —— **不编数字**。
+    /// 三个统计指标（丢包 / 抖动 / 网络往返）。
+    /// 拿不到真实数据就显示 `[--]` —— **不编数字**。
     private var statsGrid: some View {
         let items: [(String, String)] = [
             ("丢包", formatPercent(state.stats.packetLoss)),
             ("抖动", formatMs(state.stats.jitterMs)),
-            ("欠载", state.stats.underruns.map(String.init) ?? "--"),
-            ("延迟", formatMs(state.stats.latencyMs)),
+            ("往返", formatMs(state.stats.latencyMs)),
         ]
-        return HStack(spacing: 0) {
-            ForEach(Array(items.enumerated()), id: \.offset) { index, item in
-                VStack(alignment: .leading, spacing: 2) {
+        return HStack(alignment: .top, spacing: 10) {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                VStack(alignment: .leading, spacing: 3) {
                     Text(item.0)
-                        .font(.system(size: 10))
+                        .font(.system(size: 10, weight: .medium))
                         .foregroundStyle(Theme.textTertiary)
                     Text(item.1)
-                        .tabularNumbers()
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                        .monospacedDigit()
                         .foregroundStyle(Theme.textPrimary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if index < items.count - 1 {
-                    Divider().overlay(Theme.borderSubtle).frame(height: 26)
-                }
+                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .background(Theme.surface2, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
     }

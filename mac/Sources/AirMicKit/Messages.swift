@@ -46,6 +46,9 @@ public struct Message: Codable, Equatable {
     // 快捷键
     public var combo: [String]?
 
+    // ping / pong：网络往返
+    public var t: Int64?
+
     // 配置
     public var magnets: [Magnet]?
     public var presets: [Preset]?
@@ -89,6 +92,9 @@ public struct Message: Codable, Equatable {
         /// 长按语义：松开组合键
         static let hotkeyUp = "hotkey.up"
         static let micStateReport = "mic.state.report"
+
+        static let ping = "ping"
+        static let pong = "pong"
 
         static let appsRequest = "apps.request"
         static let appsList = "apps.list"

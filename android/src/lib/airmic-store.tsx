@@ -604,6 +604,12 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
             })
           }
           break
+        case 'ping':
+          // 电脑端用来测网络往返；原样回显时间戳
+          if (typeof message.t === 'number') {
+            send({ type: 'pong', t: message.t })
+          }
+          break
         case 'mic.state':
           setServerRunning(message.mode !== 'idle')
           break

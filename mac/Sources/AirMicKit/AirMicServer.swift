@@ -36,6 +36,7 @@ public final class AirMicServer: ObservableObject {
     private var audioDecoder: AacDecoder?
     private var audioReceiver: AudioReceiver?
     private var statsTimer: Timer?
+    private var pingCounter = 0
 
     /// 电脑端的稳定设备 id（Bonjour TXT 里带的那串）
     public let deviceId: String
@@ -79,6 +80,8 @@ public final class AirMicServer: ObservableObject {
     private var recordingStartedAt: Date?
     /// 收音是被用户手动关掉的吗（静默自动关 = false）
     private var recordingStoppedByUser = false
+    /// 网络往返延迟（ping/pong，手机端回显时间戳）
+    private var rttMs: Double?
 
     public init(deviceId: String = HostInfo.stableId) {
         self.deviceId = deviceId
@@ -90,6 +93,7 @@ public final class AirMicServer: ObservableObject {
             guard let self else { return }
             if !connected {
                 self.connectedClient = nil
+                self.rttMs = nil
                 // 手机断线时把可能还按着的组合键松开，否则电脑上会一直卡住
                 self.hotkeyExecutor.release()
                 self.onMain { self.connectedPhoneName = nil }
@@ -140,8 +144,19 @@ public final class AirMicServer: ObservableObject {
         statsTimer?.invalidate()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
             guard let self, let receiver = self.audioReceiver else { return }
-            let snapshot = receiver.stats(bufferMs: self.config.bufferMs)
+            var snapshot = receiver.stats(bufferMs: self.config.bufferMs)
+            // 延迟用网络往返（真实可测），没有就是 nil → 界面显示 [--]
+            snapshot.latencyMs = self.rttMs
+            // 欠载对用户没有参考价值（没说话时它只会一直涨），不展示
+            snapshot.underruns = nil
             self.onMain { self.stats = snapshot }
+
+            self.pingCounter += 1
+            if self.pingCounter % 2 == 0, let client = self.connectedClient {
+                var ping = Message(type: Message.Kind.ping)
+                ping.t = Int64(Date().timeIntervalSince1970 * 1000)
+                client.send(ping)
+            }
 
             // 诊断行：一眼看出卡在哪一环
             //   recv=0        → 音频包根本没到电脑（手机/网络）
@@ -399,6 +414,12 @@ public final class AirMicServer: ObservableObject {
             sendAppList(to: client)
         case Message.Kind.appsCurrentRequest:
             sendCurrentApp(to: client)
+        case Message.Kind.pong:
+            if let sent = message.t {
+                let now = Int64(Date().timeIntervalSince1970 * 1000)
+                let rtt = Double(max(0, now - sent))
+                rttMs = rttMs.map { $0 * 0.7 + rtt * 0.3 } ?? rtt
+            }
         case Message.Kind.micStateReport:
             let mode = MicMode(rawValue: message.mode ?? "idle") ?? .idle
             Log.info("手机端麦克风状态：\(mode.rawValue)")

@@ -31,6 +31,10 @@ export function SettingsPage({
     setThemeMode,
     silenceSeconds,
     setSilenceSeconds,
+    hapticsEnabled,
+    hapticStrength,
+    setHapticsEnabled,
+    setHapticStrength,
     pairedDevice,
     disconnect,
     unpair,
@@ -129,6 +133,63 @@ export function SettingsPage({
           </div>
         </SectionCard>
 
+        {/* ---------- 震动 ---------- */}
+        <SectionCard title="震动反馈">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[12px] text-text-secondary">
+              点击 / 长按按钮时震动
+            </span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={hapticsEnabled}
+              aria-label="震动反馈"
+              onClick={() => setHapticsEnabled(!hapticsEnabled)}
+              className="relative h-6 w-10 shrink-0 rounded-full transition-colors"
+              style={{
+                background: hapticsEnabled
+                  ? 'var(--color-amber-accent)'
+                  : 'var(--color-surface-3)',
+              }}
+            >
+              <span
+                className="absolute top-0.5 size-5 rounded-full bg-white shadow-sm transition-transform"
+                style={{
+                  left: 2,
+                  transform: hapticsEnabled ? 'translateX(16px)' : 'translateX(0)',
+                }}
+              />
+            </button>
+          </div>
+
+          {hapticsEnabled && (
+            <div className="mt-2 flex gap-2">
+              {(
+                [
+                  { id: 'light', label: '轻' },
+                  { id: 'normal', label: '标准' },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setHapticStrength(option.id)}
+                  className={
+                    hapticStrength === option.id
+                      ? 'flex-1 rounded-[10px] border border-border-strong bg-surface-3 py-1.5 text-[12px] text-text-primary'
+                      : 'flex-1 rounded-[10px] border border-border-subtle bg-surface-2 py-1.5 text-[12px] text-text-secondary'
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
+            长按时会持续震动；iOS 没有震动 API，会自动忽略。
+          </p>
+        </SectionCard>
+
         {/* ---------- 连接 ---------- */}
         <SectionCard title="连接">
           <p className="text-[12px] text-text-secondary">
@@ -158,7 +219,7 @@ export function SettingsPage({
         </SectionCard>
 
         <p className="mt-4 text-center text-[10px] text-text-faint">
-          版本 0.3.8 · 构建 {__BUILD_TIME__}
+          版本 0.3.9 · 构建 {__BUILD_TIME__}
         </p>
       </div>
     </div>

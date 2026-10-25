@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { useAirmic } from '@/lib/airmic-store'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Mic, MicOff } from 'lucide-react'
 
@@ -33,6 +34,15 @@ export function MicButton({
 }) {
   const timerRef = useRef<number | null>(null)
   const heldRef = useRef(false)
+  const pulseRef = useRef<number | null>(null)
+  const { haptic } = useAirmic()
+
+  const stopPulse = () => {
+    if (pulseRef.current) {
+      window.clearInterval(pulseRef.current)
+      pulseRef.current = null
+    }
+  }
   const [pressed, setPressed] = useState(false)
 
   const clear = () => {
@@ -48,12 +58,16 @@ export function MicButton({
     timerRef.current = window.setTimeout(() => {
       heldRef.current = true
       onPushToTalkStart()
+      // 长按：先震一下，然后按住期间持续脉冲
+      haptic('hold')
+      pulseRef.current = window.setInterval(() => haptic('hold'), 450)
     }, LONG_PRESS_MS)
   }
 
   const handlePointerUp = () => {
     setPressed(false)
     clear()
+    stopPulse()
     if (heldRef.current) {
       // 走的是长按路径 —— 松开即停
       heldRef.current = false
@@ -69,6 +83,7 @@ export function MicButton({
     if (pressed) {
       setPressed(false)
       clear()
+      stopPulse()
       if (heldRef.current) {
         heldRef.current = false
         onPushToTalkEnd()

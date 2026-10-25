@@ -39,6 +39,7 @@ export function MicPage({
     paired,
     connected,
     shouldWarnServerIdle,
+    haptic,
     pairedDevice,
     foregroundApp,
     presetNotice,
@@ -178,11 +179,11 @@ export function MicPage({
     // 只有「用户手动关掉了电脑端收音」才提醒；
     // 静默自动关的情况下电脑会自动恢复，不该吓唬用户
     if (!shouldWarnServerIdle) return
-    vibrate()
+    haptic('warn')
     setCaptureBlocked(true)
     if (blockedTimer.current) window.clearTimeout(blockedTimer.current)
     blockedTimer.current = window.setTimeout(() => setCaptureBlocked(false), 3000)
-  }, [shouldWarnServerIdle])
+  }, [haptic, shouldWarnServerIdle])
 
   /** 点按 = 常开收音；只有从 idle 切进来才算「开始收音」 */
   const handleToggleContinuous = useCallback(() => {
@@ -433,21 +434,6 @@ export function MicPage({
   )
 }
 
-/**
- * 震动。
- * iOS Safari 没有这个 API，所以先判断再用；不支持就什么都不做 ——
- * 视觉提示条才是主要的反馈渠道，不能假装震过。
- */
-function vibrate(): void {
-  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
-    return
-  }
-  try {
-    navigator.vibrate([40, 60, 40])
-  } catch {
-    // 某些浏览器在页面不可见时会抛错，忽略即可
-  }
-}
 
 /** 一枚快捷键芯片：标签 + 等宽组合键 */
 function HotkeyChip({

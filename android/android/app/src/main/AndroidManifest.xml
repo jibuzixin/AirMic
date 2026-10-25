@@ -59,6 +59,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- WebView 的震动 API 需要这个权限 -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Android 13+ 的通知权限（前台服务的常驻通知） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 

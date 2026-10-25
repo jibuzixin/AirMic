@@ -20,6 +20,7 @@ import {
 } from './airmic-data'
 import { EMPTY_STATS } from './airmic-data'
 import { magnetCombo, type HotkeyMagnet } from './hotkey'
+import { vibrate, type HapticKind, type HapticStrength } from './haptics'
 import { createTransport, type AirMicTransport } from './transport'
 
 /**
@@ -79,6 +80,10 @@ type Persisted = {
   silenceSeconds: number
   /** 磁片组 */
   groups: MagnetGroup[]
+  /** 震动反馈开关 */
+  hapticsEnabled: boolean
+  /** 震动强度 */
+  hapticStrength: HapticStrength
 }
 
 function loadPersisted(): Persisted {
@@ -94,6 +99,8 @@ function loadPersisted(): Persisted {
     theme: 'system',
     silenceSeconds: 30,
     groups: [],
+    hapticsEnabled: true,
+    hapticStrength: 'normal',
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -129,6 +136,8 @@ function loadPersisted(): Persisted {
             ? parsed.silenceSeconds
             : 30,
       groups: parsed.groups ?? [],
+      hapticsEnabled: parsed.hapticsEnabled !== false,
+      hapticStrength: parsed.hapticStrength === 'light' ? 'light' : 'normal',
     }
   } catch {
     return fallback
@@ -253,6 +262,14 @@ export type AirmicStore = {
   dismissMicAutoStop: () => void
   /** 主动重连（回到前台 / 断线时用） */
   reconnect: () => void
+
+  /* --- 震动 --- */
+  hapticsEnabled: boolean
+  hapticStrength: HapticStrength
+  setHapticsEnabled: (enabled: boolean) => void
+  setHapticStrength: (strength: HapticStrength) => void
+  /** 震一下（受开关控制） */
+  haptic: (kind?: HapticKind) => void
 }
 
 const AirmicContext = createContext<AirmicStore | null>(null)
@@ -323,6 +340,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [micAutoStopNotice, setMicAutoStopNotice] = useState<string | null>(null)
   /** 磁片组（组内磁片按顺序执行） */
   const [groups, setGroups] = useState<MagnetGroup[]>(persisted.groups ?? [])
+  /** 震动反馈 */
+  const [hapticsEnabled, setHapticsEnabledState] = useState<boolean>(
+    persisted.hapticsEnabled ?? true,
+  )
+  const [hapticStrength, setHapticStrengthState] = useState<HapticStrength>(
+    persisted.hapticStrength ?? 'normal',
+  )
   /** 外观模式 */
   const [themeMode, setThemeModeState] = useState<ThemeMode>(persisted.theme ?? 'system')
   /** 系统栏高度（页面铺满全屏，自己留边距） */
@@ -349,6 +373,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         theme: themeMode,
         silenceSeconds,
         groups,
+        hapticsEnabled,
+        hapticStrength,
         ...patch,
       }
       try {
@@ -357,7 +383,17 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         /* 存不下就算了，不影响本次会话 */
       }
     },
-    [appList, groups, magnets, persisted, presets, silenceSeconds, themeMode],
+    [
+      appList,
+      groups,
+      hapticStrength,
+      hapticsEnabled,
+      magnets,
+      persisted,
+      presets,
+      silenceSeconds,
+      themeMode,
+    ],
   )
 
   const send = useCallback(
@@ -403,6 +439,30 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       if (persisted.token && !connected) reconnect()
     })
   }, [connected, persisted.token, reconnect, transport])
+
+  const setHapticsEnabled = useCallback(
+    (enabled: boolean) => {
+      setHapticsEnabledState(enabled)
+      persist({ hapticsEnabled: enabled })
+    },
+    [persist],
+  )
+
+  const setHapticStrength = useCallback(
+    (strength: HapticStrength) => {
+      setHapticStrengthState(strength)
+      persist({ hapticStrength: strength })
+    },
+    [persist],
+  )
+
+  const haptic = useCallback(
+    (kind: HapticKind = 'tap') => {
+      if (!hapticsEnabled) return
+      vibrate(kind, hapticStrength)
+    },
+    [hapticStrength, hapticsEnabled],
+  )
 
   const setSilenceSeconds = useCallback(
     (seconds: number) => {
@@ -836,12 +896,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const warnIfServerIdle = useCallback(() => {
     if (serverRunning || !serverStoppedByUser) return
     setMicBlockedNotice('电脑端没有在收音，声音传不过去')
-    try {
-      navigator.vibrate?.([120, 60, 120])
-    } catch {
-      /* 不支持震动就算了，视觉提示才是主要渠道 */
-    }
-  }, [serverRunning, serverStoppedByUser])
+    if (hapticsEnabled) vibrate('warn', hapticStrength)
+  }, [hapticStrength, hapticsEnabled, serverRunning, serverStoppedByUser])
 
   /**
    * 当前预案里麦克风按钮绑定的磁片
@@ -1250,6 +1306,11 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setSilenceSeconds,
       dismissMicAutoStop,
       reconnect,
+      hapticsEnabled,
+      hapticStrength,
+      setHapticsEnabled,
+      setHapticStrength,
+      haptic,
     }),
     [
       paired,
@@ -1323,6 +1384,11 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setSilenceSeconds,
       dismissMicAutoStop,
       reconnect,
+      hapticsEnabled,
+      hapticStrength,
+      setHapticsEnabled,
+      setHapticStrength,
+      haptic,
     ],
   )
 

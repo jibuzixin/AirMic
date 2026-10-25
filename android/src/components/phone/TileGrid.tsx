@@ -5,6 +5,7 @@ import { fadeFast, springSnappy } from '@/lib/motion'
 import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
 import { tileIcon } from './icons'
 import type { MagnetGroup } from '@/lib/airmic-data'
+import { useAirmic } from '@/lib/airmic-store'
 
 /** 磁贴格子里的一项：磁片，或者磁片组 */
 export type TileEntry =
@@ -139,7 +140,16 @@ function TileButton({
   const [holding, setHolding] = useState(false)
   const timerRef = useRef<number | null>(null)
   const holdTimerRef = useRef<number | null>(null)
+  const pulseRef = useRef<number | null>(null)
   const holdingRef = useRef(false)
+  const { haptic } = useAirmic()
+
+  const stopPulse = () => {
+    if (pulseRef.current) {
+      window.clearInterval(pulseRef.current)
+      pulseRef.current = null
+    }
+  }
 
   const clearHoldTimer = () => {
     if (holdTimerRef.current) {
@@ -162,11 +172,15 @@ function TileButton({
       holdingRef.current = true
       setHolding(true)
       onHoldStart(magnet)
+      // 长按：持续脉冲，越按越有反馈
+      haptic('hold')
+      pulseRef.current = window.setInterval(() => haptic('hold'), 450)
     }, 320)
   }
 
   const handlePointerUp = () => {
     clearHoldTimer()
+    stopPulse()
     if (holdingRef.current) {
       holdingRef.current = false
       setHolding(false)
@@ -183,6 +197,7 @@ function TileButton({
 
   const handlePointerLeave = () => {
     clearHoldTimer()
+    stopPulse()
     if (holdingRef.current) {
       holdingRef.current = false
       setHolding(false)

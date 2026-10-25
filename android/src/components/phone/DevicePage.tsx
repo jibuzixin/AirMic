@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Loader2, RefreshCw, Wifi, Check, ChevronRight, Link2 } from 'lucide-react'
+import { Loader2, RefreshCw, Wifi, Check, Link2 } from 'lucide-react'
 import { useAirmic } from '@/lib/airmic-store'
 import type { Device } from '@/lib/airmic-data'
 import { fadeFast, springSmooth, springSnappy } from '@/lib/motion'
@@ -11,7 +11,7 @@ import { fadeFast, springSmooth, springSnappy } from '@/lib/motion'
  * 需求说明书 §3.1 / §3.2：
  *   - **未配对 → 永远进这一页**
  *   - 手动刷新扫描，不持续轮询（省电，用户明确要求）
- *   - 两条配对路径：点设备发配对请求 / 手输 6 位配对码
+ *   - 配对只有一条路径：点设备发配对请求，电脑端确认
  *   - 空状态要写清怎么操作
  *
  * 连接 vs 配对（动词保持一致，别混）：
@@ -28,28 +28,7 @@ export function DevicePage() {
     startScan,
     requestPair,
     connectTo,
-    pairByCode,
   } = useAirmic()
-
-  const [codeOpen, setCodeOpen] = useState(false)
-  const [code, setCode] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const codeRef = useRef<HTMLInputElement>(null)
-
-  useEffect(() => {
-    if (codeOpen) codeRef.current?.focus()
-  }, [codeOpen])
-
-  const handleCode = () => {
-    const result = pairByCode(code)
-    if (!result.ok) {
-      setError(result.message)
-      return
-    }
-    setError(null)
-    setCode('')
-    setCodeOpen(false)
-  }
 
   /** 已配对 → 直接连上；未配对 → 发配对请求 */
   const handleDevice = (device: Device) => {
@@ -129,68 +108,6 @@ export function DevicePage() {
           </ul>
         )}
 
-        {/* ---------- 配对码路径 ---------- */}
-        <div className="mt-auto pt-2">
-          {!codeOpen ? (
-            <button
-              type="button"
-              onClick={() => setCodeOpen(true)}
-              className="flex h-11 w-full items-center justify-between rounded-xl border border-border-subtle bg-surface-1 px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
-            >
-              <span>输入电脑端配对码</span>
-              <ChevronRight size={15} strokeWidth={1.7} />
-            </button>
-          ) : (
-            <div className="rounded-xl border border-border-subtle bg-surface-1 p-3">
-              <label
-                htmlFor="pair-code"
-                className="text-[11px] text-text-tertiary"
-              >
-                输入电脑上显示的 6 位配对码
-              </label>
-              <input
-                id="pair-code"
-                ref={codeRef}
-                value={code}
-                onChange={(e) => {
-                  setCode(e.target.value.replace(/\D/g, '').slice(0, 6))
-                  setError(null)
-                }}
-                inputMode="numeric"
-                autoComplete="off"
-                placeholder="······"
-                className="tabular mt-1.5 w-full rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2 text-[16px] text-text-primary outline-none placeholder:text-text-faint focus:border-border-strong"
-                style={{ letterSpacing: '0.2em' }}
-              />
-              {error && (
-                <p className="mt-2 text-[11px]" style={{ color: 'var(--color-recording)' }}>
-                  {error}
-                </p>
-              )}
-              <div className="mt-2.5 flex gap-2">
-                <button
-                  type="button"
-                  onClick={handleCode}
-                  disabled={code.length !== 6}
-                  className="flex h-11 flex-1 items-center justify-center rounded-[10px] bg-amber-accent text-[12px] font-medium text-surface-0 transition-opacity disabled:opacity-40"
-                >
-                  配对
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCodeOpen(false)
-                    setCode('')
-                    setError(null)
-                  }}
-                  className="flex h-11 items-center justify-center rounded-[10px] border border-border-subtle px-3 text-[12px] text-text-secondary transition-colors hover:bg-surface-2"
-                >
-                  取消
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   )

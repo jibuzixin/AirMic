@@ -27,7 +27,6 @@ struct PanelView: View {
             }
 
             VStack(alignment: .leading, spacing: 12) {
-                pairCodeRow
                 outputDeviceRow
                 recordButton
             }
@@ -57,13 +56,10 @@ struct PanelView: View {
             .padding(.vertical, 10)
         }
         .frame(width: 318)
-        // Apple 风格毛玻璃：跟随系统浅色 / 深色
-        .background(.regularMaterial)
+        // 更接近控制中心那种「薄」毛玻璃
+        .background(.ultraThinMaterial)
         .foregroundStyle(Theme.textPrimary)
-        // 展开/收起详细设置时，内容高度平滑变化（不要瞬跳）
-        .animation(.spring(response: 0.30, dampingFraction: 0.86), value: detailsExpanded)
-        .animation(.spring(response: 0.30, dampingFraction: 0.86), value: state.pendingRequests.count)
-        .clipped()
+        .animation(.spring(response: 0.28, dampingFraction: 0.9), value: state.pendingRequests.count)
         .onAppear {
             // 面板打开时刷新设备列表（设备可能被插拔）
             state.refreshDevices()
@@ -119,7 +115,7 @@ struct PanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 10)
-        .transition(.opacity.combined(with: .move(edge: .top)))
+        .transition(.opacity)
     }
 
     // MARK: - 辅助功能权限
@@ -160,45 +156,6 @@ struct PanelView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(Theme.surface2)
-    }
-
-    // MARK: - 配对码
-
-    private var pairCodeRow: some View {
-        HStack(spacing: 8) {
-            Text("配对码")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textSecondary)
-
-            Spacer(minLength: 0)
-
-            Text(pairCodeDigits)
-                .font(.system(size: 15, weight: .medium, design: .monospaced))
-                .tracking(2)
-                .foregroundStyle(Theme.textPrimary)
-                .monospacedDigit()
-
-            Button {
-                state.refreshPairCode()
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .font(.system(size: 11, weight: .medium))
-            }
-            .buttonStyle(.plain)
-            .foregroundStyle(Theme.textSecondary)
-            .help("刷新配对码（旧码立刻失效）")
-        }
-    }
-
-    /// 6 位数字，拆开显示，等宽
-    private var pairCodeDigits: String {
-        let code = state.pairCode
-        guard code.count == 6 else { return code }
-        return stride(from: 0, to: 6, by: 2).map { index -> String in
-            let start = code.index(code.startIndex, offsetBy: index)
-            let end = code.index(start, offsetBy: 2)
-            return String(code[start..<end])
-        }.joined(separator: " ")
     }
 
     // MARK: - 输出设备
@@ -278,6 +235,7 @@ struct PanelView: View {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 9, weight: .bold))
                         .rotationEffect(.degrees(detailsExpanded ? 90 : 0))
+                        .animation(.spring(response: 0.26, dampingFraction: 0.9), value: detailsExpanded)
                     Text("详细设置")
                         .font(.system(size: 12, weight: .medium))
                 }
@@ -288,7 +246,7 @@ struct PanelView: View {
             }
             .buttonStyle(.plain)
 
-            if detailsExpanded {
+            Collapsible(expanded: detailsExpanded) {
                 VStack(alignment: .leading, spacing: 10) {
                     statsGrid
 
@@ -348,7 +306,6 @@ struct PanelView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
-                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }

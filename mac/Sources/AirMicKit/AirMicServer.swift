@@ -488,6 +488,11 @@ public final class AirMicServer: ObservableObject {
     // MARK: - 前台应用 → 预案
 
     private func handleForegroundChange(_ app: ForegroundApp) {
+        // 忽略 AirMic 自己：打开菜单栏面板时它可能变成「前台应用」，
+        // 那样快捷键就会发给它自己，等于没发。
+        if app.bundleId == Bundle.main.bundleIdentifier {
+            return
+        }
         onMain {
             self.foregroundApp = app
             if !self.knownApps.contains(app.name) {

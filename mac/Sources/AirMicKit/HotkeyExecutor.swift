@@ -84,6 +84,7 @@ public struct HotkeyExecutor {
             Log.error("不认识的按键：\(mainKey ?? "-")")
             return false
         }
+        Log.debug("按键 \(mainKey) → keyCode \(keyCode)")
 
         let down = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: true)
         let up = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: false)
@@ -136,16 +137,35 @@ public struct HotkeyExecutor {
 
     // MARK: - 键码表
 
-    /// macOS 虚拟键码（Carbon HIToolbox 的 ANSI 布局）
+    /// macOS 虚拟键码
+    ///
+    /// ⚠️ **字母/数字不是 ASCII**：`kVK_ANSI_V` = 9，而 'V' 的 ASCII 是 86。
+    /// 之前按 ASCII 算过，结果 ⌘Space（空格有单独映射）能用，⌘T / ⌘V / ⌘C 全废。
     public static func keyCode(for key: String) -> CGKeyCode? {
-        if let code = specialKeys[key] { return code }
-        // 字母：a-z 的 ASCII 码就是 macOS 键码
-        if key.count == 1, let ascii = key.uppercased().first?.asciiValue {
-            return CGKeyCode(ascii)
-        }
+        let normalized = key.lowercased()
+        if let code = ansiKeys[normalized] { return code }
+        if let code = functionKeys[normalized] { return code }
+        if let code = specialKeys[normalized] { return code }
         return nil
     }
 
+    /// 字母、数字、符号（ANSI 布局）
+    private static let ansiKeys: [String: CGKeyCode] = [
+        "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
+        "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17,
+        "1": 18, "2": 19, "3": 20, "4": 21, "6": 22, "5": 23, "=": 24,
+        "9": 25, "7": 26, "-": 27, "8": 28, "0": 29, "]": 30,
+        "o": 31, "u": 32, "[": 33, "i": 34, "p": 35, "l": 37, "j": 38, "'": 39,
+        "k": 40, ";": 41, "\\": 42, ",": 43, "/": 44, "n": 45, "m": 46, ".": 47, "`": 50,
+    ]
+
+    /// 功能键
+    private static let functionKeys: [String: CGKeyCode] = [
+        "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
+        "f7": 98, "f8": 100, "f9": 101, "f10": 109, "f11": 103, "f12": 111,
+    ]
+
+    /// 编辑键 / 方向键
     private static let specialKeys: [String: CGKeyCode] = [
         "space": 49,
         "enter": 36,

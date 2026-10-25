@@ -25,6 +25,7 @@ func usage() {
       airmicd pair-code            打印当前配对码
       airmicd devices              列出已配对设备
       airmicd config               打印当前配置（磁铁 / 预案）
+      airmicd keycode [按键…]       打印按键的 macOS 虚拟键码
       airmicd audio-devices        列出系统音频输出设备
       airmicd loopback-test [设备] 往虚拟设备写测试音再读回来（验证回环）
       airmicd tone [主机] [端口] [秒数]  发一段测试音（验证音频链路）
@@ -110,6 +111,15 @@ case "loopback-test":
     // 默认挑第一个名字里带 BlackHole / Loopback 的设备
     let target = arguments.count > 1 ? arguments[1] : nil
     runLoopbackTest(matching: target)
+
+case "keycode":
+    // 打印按键的 macOS 虚拟键码（排查快捷键用）
+    let keys = Array(arguments.dropFirst())
+    let targets = keys.isEmpty ? ["a", "t", "v", "c", "space", "enter", "f5", ","] : keys
+    for key in targets {
+        let code = HotkeyExecutor.keyCode(for: key)
+        print("\(key.padding(toLength: 8, withPad: " ", startingAt: 0)) → \(code.map(String.init) ?? "未知")")
+    }
 
 case "aacgap":
     // 复现「停一下再说就没声」：模拟手机重启编码器

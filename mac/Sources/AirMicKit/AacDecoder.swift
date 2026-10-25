@@ -13,6 +13,8 @@ public final class AacDecoder {
 
     private var converter: AudioConverterRef?
     private let context = DecodeContext()
+    /// 连续解不出的次数
+    private var consecutiveEmpty = 0
 
     public let sampleRate: Double
     public let channels: UInt32
@@ -60,6 +62,19 @@ public final class AacDecoder {
         if let converter {
             AudioConverterDispose(converter)
         }
+    }
+
+    /// 复位解码器
+    ///
+    /// ⚠️ AudioConverter 一旦在输入回调里拿到「0 个包」，可能进入 EOF 状态并**一直**
+    /// 停在那里 —— 表现为「第一次说话有声音，停了再开就再也不出声音」。
+    /// 所以连续解不出时必须把它 reset 掉。
+    public func reset() {
+        if let converter {
+            AudioConverterReset(converter)
+        }
+        context.queue.removeAll()
+        consecutiveEmpty = 0
     }
 
     /// 解码一个 AAC 访问单元，返回 PCM16 字节（可能是空 —— 前几帧是编码器 priming）
@@ -138,9 +153,17 @@ public final class AacDecoder {
 
             let produced = Int(outList.mBuffers.mDataByteSize)
             if produced > 0 {
+                consecutiveEmpty = 0
                 return Data(bytes: storage, count: produced)
             }
             // 没产出就继续喂 —— AAC 解码器有 priming 与内部缓冲
+        }
+        // 连续解不出 → 复位，避免卡在 EOF
+        consecutiveEmpty += 1
+        if consecutiveEmpty >= 3 {
+            AudioConverterReset(converter)
+            consecutiveEmpty = 0
+            Log.debug("解码器连续解不出数据，已复位")
         }
         return Data()
     }

@@ -137,6 +137,12 @@ final class AppState: ObservableObject {
         NSWorkspace.shared.open(Diag.logDirectory)
     }
 
+    /// 清空日志（重新测一遍时用，避免旧记录干扰）
+    func clearDiagnostics() {
+        Diag.clear()
+        diagnosticsCopied = false
+    }
+
     func refreshPairCode() {
         server.refreshPairCode()
     }

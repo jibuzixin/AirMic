@@ -105,6 +105,12 @@ public final class AudioReceiver {
     }
 
     /// 拆包 → 解码 → 写进虚拟设备
+    /// 复位解码器（手机停止收音后重新开始时调用）
+    public func resetDecoder() {
+        decoder.reset()
+        Log.info("解码器已复位（等待新一段音频）")
+    }
+
     private func handle(_ data: Data) {
         guard data.count > AudioReceiver.headerBytes else { return }
         let payload = data.dropFirst(AudioReceiver.headerBytes)
@@ -149,8 +155,8 @@ public final class AudioReceiver {
         let pcm = decoder.decode(Data(payload))
         if pcm.isEmpty {
             emptyDecodes += 1
-            if emptyDecodes <= 3 || emptyDecodes % 100 == 0 {
-                Log.debug("解码为空（第 \(emptyDecodes) 次）")
+            if emptyDecodes <= 5 || emptyDecodes % 100 == 0 {
+                Log.debug("解码为空（第 \(emptyDecodes) 次，AU \(payload.count) 字节）")
             }
         }
         if pcm.isEmpty {

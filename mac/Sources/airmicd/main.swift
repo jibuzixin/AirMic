@@ -111,6 +111,10 @@ case "loopback-test":
     let target = arguments.count > 1 ? arguments[1] : nil
     runLoopbackTest(matching: target)
 
+case "aacgap":
+    // 复现「停一下再说就没声」：模拟手机重启编码器
+    runAacGapTest()
+
 case "aactest":
     // 编解码自测：PCM → AAC → PCM，不经过网络
     do {
@@ -299,4 +303,60 @@ func runLoopbackTest(matching keyword: String?) {
         exit(2)
     }
     print("✅ 回环正常：写进去的声音能在设备输入端读到")
+}
+
+
+/// 复现「暂停后重启编码器，解码器不再产出」
+func runAacGapTest() {
+    func makePcm(_ index: Int) -> Data {
+        var pcm = Data(capacity: 2048)
+        for i in 0..<1024 {
+            let t = Double(index * 1024 + i) / 48000.0
+            var v = Int16(sin(2 * .pi * 440 * t) * 0.3 * 32767).littleEndian
+            withUnsafeBytes(of: &v) { pcm.append(contentsOf: $0) }
+        }
+        return pcm
+    }
+
+    do {
+        let decoder = try AacDecoder(sampleRate: 48000, channels: 1)
+
+        // 第一段：手机第一次说话
+        var encoder = try AacEncoder(sampleRate: 48000, channels: 1, bitRate: 32000)
+        var first = 0
+        for i in 0..<100 {
+            guard let au = encoder.encode(makePcm(i)) else { continue }
+            first += decoder.decode(au).count
+        }
+        print("第一段解码：\(first / 2) 采样")
+
+        // 模拟「解不出来的坏包」：空载荷会触发转换器的 EOF 路径
+        var badEmpty = 0
+        for _ in 0..<5 {
+            if decoder.decode(Data()).isEmpty { badEmpty += 1 }
+        }
+        print("坏包阶段：5 次解码，空 \(badEmpty) 次")
+
+        // 模拟手机停止 → 重新开始（新建 MediaCodec，编码器重新 priming）
+        Thread.sleep(forTimeInterval: 0.5)
+        encoder = try AacEncoder(sampleRate: 48000, channels: 1, bitRate: 32000)
+        var second = 0
+        var empty = 0
+        for i in 100..<200 {
+            guard let au = encoder.encode(makePcm(i)) else { continue }
+            let pcm = decoder.decode(au)
+            if pcm.isEmpty { empty += 1 }
+            second += pcm.count
+        }
+        print("第二段解码：\(second / 2) 采样（空 \(empty) 次）")
+
+        if second == 0 {
+            print("❌ 复现了：编码器重启后解码器不再产出")
+            exit(2)
+        }
+        print("✅ 重启后仍能正常解码")
+    } catch {
+        print("测试失败：\(error.localizedDescription)")
+        exit(1)
+    }
 }

@@ -372,6 +372,13 @@ public final class AirMicServer: ObservableObject {
         case Message.Kind.micStateReport:
             let mode = MicMode(rawValue: message.mode ?? "idle") ?? .idle
             Log.info("手机端麦克风状态：\(mode.rawValue)")
+            // 手机停止过后重新开始 → 编码器是新的，解码器也复位一下，
+            // 否则可能卡在上一段的 EOF 上（「停了再说话就没声」）
+            if phoneMicMode == .idle && mode != .idle {
+                audioReceiver?.resetDecoder()
+            } else if mode == .idle {
+                audioReceiver?.resetDecoder()
+            }
             onMain { self.phoneMicMode = mode }
         default:
             Log.debug("收到未识别的消息类型：\(message.type)")

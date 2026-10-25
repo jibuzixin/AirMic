@@ -320,6 +320,11 @@ struct PanelView: View {
                         }
                         .buttonStyle(PanelActionButtonStyle(isPrimary: false))
 
+                        Button("清空") {
+                            state.clearDiagnostics()
+                        }
+                        .buttonStyle(PanelActionButtonStyle(isPrimary: false))
+
                         Spacer(minLength: 0)
                     }
                 }

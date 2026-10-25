@@ -121,7 +121,12 @@ function loadPersisted(): Persisted {
               : preset.appName
                 ? [preset.appName]
                 : []
-          return { ...preset, appIds, micHoldId: preset.micHoldId ?? null }
+          return {
+            ...preset,
+            appIds,
+            micHoldId: preset.micHoldId ?? null,
+            micHoldGroupId: preset.micHoldGroupId ?? null,
+          }
         },
       ),
       appList: parsed.appList ?? [],
@@ -353,6 +358,15 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [insets, setInsets] = useState({ top: 0, bottom: 0 })
   /** 长按说话时按下的组合键（松开时要还原） */
   const heldComboRef = useRef<string[] | null>(null)
+  /**
+   * 长按绑定的是磁片组时，松手后还要依次执行的步骤。
+   * 组里的第一步跟着手指按住，剩下的存在这里。
+   */
+  const heldGroupStepsRef = useRef<{
+    combos: string[][]
+    intervalMs: number
+  } | null>(null)
+  const holdReleaseTimers = useRef<number[]>([])
   const [connectionError, setConnectionError] = useState<string | null>(null)
   const noticeSeq = useRef(0)
   /** 本机设备信息（原生侧生成，JS 侧发消息时必须带同一个 deviceId） */
@@ -920,6 +934,27 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   )
 
   /**
+   * 长按绑定：磁片或磁片组（二选一）
+   *
+   * 磁片组的长按语义：第一步跟着手指按住，松手后剩下的步骤依次执行。
+   */
+  const presetHoldBinding = useCallback((): {
+    magnet: HotkeyMagnet | null
+    group: MagnetGroup | null
+  } => {
+    const preset = presets.find((p) => p.id === activePresetId)
+    if (!preset) return { magnet: null, group: null }
+    if (preset.micHoldGroupId) {
+      const group = groups.find((g) => g.id === preset.micHoldGroupId)
+      if (group) return { magnet: null, group }
+    }
+    return {
+      magnet: magnets.find((m) => m.id === preset.micHoldId) ?? null,
+      group: null,
+    }
+  }, [activePresetId, groups, magnets, presets])
+
+  /**
    * 点按语义：开 / 关各触发一次（按下 → 抬起）
    */
   const fireTap = useCallback(
@@ -953,10 +988,27 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (micMode === 'ptt') return
     warnIfServerIdle()
     // 长按语义：按下组合键但**不松开**，等手指抬起来才还原
-    // 用的是「长按」自己绑定的磁片，与「按下 / 松开」互相独立
-    const magnet = presetMagnet('hold')
-    if (magnet) {
-      const combo = magnetCombo(magnet)
+    // 用的是「长按」自己绑定的磁片 / 磁片组，与「按下 / 松开」互相独立
+    const binding = presetHoldBinding()
+    if (binding.group) {
+      // 组：找第一个能执行的步骤按住，剩下的等松手再跑
+      const combos: string[][] = []
+      for (const magnetId of binding.group.steps) {
+        const magnet = magnets.find((m) => m.id === magnetId)
+        if (!magnet) continue
+        const combo = magnetCombo(magnet)
+        if (combo.length > 0) combos.push(combo)
+      }
+      if (combos.length > 0) {
+        heldComboRef.current = combos[0]
+        heldGroupStepsRef.current = {
+          combos: combos.slice(1),
+          intervalMs: Math.max(0, binding.group.intervalSeconds) * 1000,
+        }
+        send({ type: 'hotkey.down', combo: combos[0] })
+      }
+    } else if (binding.magnet) {
+      const combo = magnetCombo(binding.magnet)
       if (combo.length > 0) {
         heldComboRef.current = combo
         send({ type: 'hotkey.down', combo })
@@ -964,7 +1016,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     }
     setMicMode('ptt')
     void beginCapture('ptt')
-  }, [beginCapture, micMode, presetMagnet, send, warnIfServerIdle])
+  }, [beginCapture, magnets, micMode, presetHoldBinding, send, warnIfServerIdle])
 
   const endPushToTalk = useCallback(() => {
     // ⚠️ 不管当前状态是不是 ptt，只要按下过组合键就必须松开 ——
@@ -972,6 +1024,20 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (heldComboRef.current) {
       send({ type: 'hotkey.up', combo: heldComboRef.current })
       heldComboRef.current = null
+    }
+    // 长按绑定磁片组：松开第一步之后，剩下的按间隔依次执行
+    const pending = heldGroupStepsRef.current
+    heldGroupStepsRef.current = null
+    if (pending && pending.combos.length > 0) {
+      let delay = 0
+      for (const combo of pending.combos) {
+        holdReleaseTimers.current.push(
+          window.setTimeout(() => {
+            send({ type: 'hotkey.execute', combo })
+          }, delay),
+        )
+        delay += pending.intervalMs
+      }
     }
     if (micMode === 'ptt') {
       setMicMode('idle')
@@ -1052,6 +1118,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           appName: null,
           micPressId: null,
           micReleaseId: null,
+          micHoldId: null,
+          micHoldGroupId: null,
           tiles: [],
         },
       ]
@@ -1124,6 +1192,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         ...p,
         micPressId: p.micPressId === id ? null : p.micPressId,
         micReleaseId: p.micReleaseId === id ? null : p.micReleaseId,
+        micHoldId: p.micHoldId === id ? null : p.micHoldId,
         tiles: p.tiles.filter((t) => t.magnetId !== id),
       }))
       const nextGroups = groups.map((g) => ({
@@ -1188,9 +1257,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const deleteGroup = useCallback(
     (id: string) => {
       const nextGroups = groups.filter((g) => g.id !== id)
-      // 预案里引用这个组的磁贴一起删掉
+      // 预案里引用这个组的磁贴一起删掉；长按绑定也要解除
       const nextPresets = presets.map((p) => ({
         ...p,
+        micHoldGroupId: p.micHoldGroupId === id ? null : p.micHoldGroupId,
         tiles: p.tiles.filter((t) => t.groupId !== id),
       }))
       setGroups(nextGroups)

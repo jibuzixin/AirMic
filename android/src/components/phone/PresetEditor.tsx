@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { createElement } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
-import type { Preset } from '@/lib/airmic-data'
+import type { MagnetGroup, Preset } from '@/lib/airmic-data'
 import { useAirmic } from '@/lib/airmic-store'
 import { useBackHandler } from '@/lib/back-stack'
 import { fadeFast, layoutSpring, springSmooth } from '@/lib/motion'
@@ -79,7 +79,11 @@ export function PresetEditor({
     } else if (target.kind === 'micRelease') {
       updatePreset(preset.id, { micReleaseId: magnetId })
     } else if (target.kind === 'micHold') {
-      updatePreset(preset.id, { micHoldId: magnetId })
+      // 长按的磁片和磁片组二选一
+      updatePreset(preset.id, {
+        micHoldId: magnetId,
+        micHoldGroupId: null,
+      })
     } else if (target.kind === 'tile') {
       updatePreset(preset.id, {
         tiles: preset.tiles.map((t) =>
@@ -99,9 +103,14 @@ export function PresetEditor({
     setPicker(null)
   }
 
-  /** 把磁片组绑到磁贴位置 */
+  /** 把磁片组绑到磁贴位置，或者麦克风的「长按」 */
   const applyGroup = (target: PickerTarget, groupId: string) => {
-    if (target.kind === 'tile') {
+    if (target.kind === 'micHold') {
+      updatePreset(preset.id, {
+        micHoldGroupId: groupId,
+        micHoldId: null,
+      })
+    } else if (target.kind === 'tile') {
       updatePreset(preset.id, {
         tiles: preset.tiles.map((t) =>
           t.id === target.tileId
@@ -136,6 +145,9 @@ export function PresetEditor({
   const pressMagnet = magnetOf(preset.micPressId)
   const releaseMagnet = magnetOf(preset.micReleaseId)
   const holdMagnet = magnetOf(preset.micHoldId ?? null)
+  const holdGroup = preset.micHoldGroupId
+    ? (groups.find((g) => g.id === preset.micHoldGroupId) ?? null)
+    : null
   const boundAppIds = preset.appIds ?? []
   /** appId → 显示名（bundle id 取最后一段兜底） */
   const appNameFor = (id: string) =>
@@ -319,11 +331,13 @@ export function PresetEditor({
               <MagnetSlot
                 label="长按说话时"
                 magnet={holdMagnet}
+                group={holdGroup}
                 onClick={() => setPicker({ kind: 'micHold' })}
               />
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-text-tertiary">
               「点按打开/关闭」是两次独立按键；「长按说话」按下时按住组合键，松手才松开。
+              长按也可以绑磁片组：第一步跟着手指按住，松手后剩下的依次执行。
             </p>
           </Section>
 
@@ -439,7 +453,19 @@ export function PresetEditor({
               magnets={magnets}
               groups={groups}
               onPick={(id) => applyMagnet(picker, id)}
-              onPickGroup={(id) => applyGroup(picker, id)}
+              onPickGroup={
+                // 只有「长按」和磁贴能绑磁片组；点按开/关仍然只能绑单个磁片
+                picker.kind === 'micHold' ||
+                picker.kind === 'tile' ||
+                picker.kind === 'addTile'
+                  ? (id) => applyGroup(picker, id)
+                  : undefined
+              }
+              groupHint={
+                picker.kind === 'micHold'
+                  ? '磁片组（第一步按住，松手后其余依次执行）'
+                  : undefined
+              }
               onCreate={() => {
                 setMagnetDraft({ magnet: null, applyTo: picker })
                 setPicker(null)
@@ -517,30 +543,37 @@ function AppChip({
 }
 
 /**
- * 一个磁片槽位 —— 显示当前绑的磁片，点一下去换
+ * 一个绑定槽位 —— 显示当前绑的磁片 / 磁片组，点一下去换
  * 这是「麦克风按钮的绑定」和「独立磁贴」的公共零件。
  */
 function MagnetSlot({
   label,
   magnet,
+  group,
   onClick,
 }: {
   label: string
   magnet: HotkeyMagnet | null
+  group?: MagnetGroup | null
   onClick: () => void
 }) {
   const hasKey = magnetHasKey(magnet)
+  const iconName = group?.icon ?? magnet?.icon ?? null
+  const title = group?.name ?? magnet?.label ?? '不绑定'
+  const badge = group
+    ? `${group.steps.length} 步`
+    : hasKey
+      ? magnetKeys(magnet)
+      : '未设置'
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={`选择${label}的磁片，当前 ${
-        magnet ? magnet.label : '不绑定'
-      }`}
+      aria-label={`选择${label}的绑定，当前 ${title}`}
       className="flex min-h-[44px] w-full items-center gap-2 rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2 text-left transition-colors hover:bg-surface-3"
     >
-      {magnet ? (
-        createElement(tileIcon(magnet.icon), {
+      {iconName ? (
+        createElement(tileIcon(iconName), {
           size: 14,
           strokeWidth: 1.8,
           className: 'shrink-0 text-text-secondary',
@@ -549,13 +582,13 @@ function MagnetSlot({
         <span className="grid size-4 shrink-0 place-items-center rounded-full border border-border-subtle" />
       )}
       <span className="min-w-0 flex-1 truncate text-[12px] text-text-secondary">
-        {magnet?.label ?? '不绑定'}
+        {title}
       </span>
       <span className="shrink-0 text-[11px] text-text-tertiary">{label}</span>
       <span
         className="tabular shrink-0 rounded-full px-2 py-0.5 text-[10px]"
         style={
-          hasKey
+          group || hasKey
             ? {
                 background: 'var(--color-surface-3)',
                 color: 'var(--color-text-primary)',
@@ -563,7 +596,7 @@ function MagnetSlot({
             : { color: 'var(--color-text-faint)' }
         }
       >
-        {hasKey ? magnetKeys(magnet) : '未设置'}
+        {badge}
       </span>
     </button>
   )

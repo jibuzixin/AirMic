@@ -6,6 +6,7 @@ import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
 import { fadeFast, springSmooth } from '@/lib/motion'
 import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import type { MagnetGroup } from '@/lib/airmic-data'
 import { TileGrid, type TileEntry } from './TileGrid'
 
 /**
@@ -157,6 +158,13 @@ export function MicPage({
   const holdMagnet = useMemo(
     () => magnets.find((m) => m.id === preset?.micHoldId) ?? null,
     [magnets, preset?.micHoldId],
+  )
+  const holdGroup = useMemo(
+    () =>
+      preset?.micHoldGroupId
+        ? (groups.find((g) => g.id === preset.micHoldGroupId) ?? null)
+        : null,
+    [groups, preset?.micHoldGroupId],
   )
 
   /* ---------- 磁贴 ---------- */
@@ -324,6 +332,7 @@ export function MicPage({
           <HotkeyChip
             label="长按"
             magnet={holdMagnet}
+            group={holdGroup}
             onClick={onEditMicBindings}
           />
         </div>
@@ -370,21 +379,29 @@ export function MicPage({
 function HotkeyChip({
   label,
   magnet,
+  group,
   onClick,
 }: {
   label: string
   magnet: HotkeyMagnet | null
+  /** 长按可以绑磁片组，这时显示组名和步数 */
+  group?: MagnetGroup | null
   onClick: () => void
 }) {
-  const bound = magnetHasKey(magnet)
-  const keys = bound ? magnetKeys(magnet) : ''
+  const bound = !!group || magnetHasKey(magnet)
+  const keys = group
+    ? `组 · ${group.steps.length} 步`
+    : bound
+      ? magnetKeys(magnet)
+      : ''
+  const groupName = group?.name
 
   return (
     <button
       type="button"
       onClick={onClick}
       aria-label={`设置麦克风按钮${label}时触发的快捷键，当前 ${
-        bound ? keys : '未设置'
+        groupName ?? (bound ? keys : '未设置')
       }`}
       className="flex h-11 items-center gap-1.5 rounded-full border border-border-subtle bg-surface-1 px-3 transition-colors hover:border-border-strong hover:bg-surface-2 active:scale-[0.97]"
     >

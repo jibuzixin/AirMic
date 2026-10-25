@@ -20,6 +20,7 @@ export function MagnetPicker({
   groups,
   onPick,
   onPickGroup,
+  groupHint,
   onCreate,
   onClose,
 }: {
@@ -29,6 +30,8 @@ export function MagnetPicker({
   onPick: (magnetId: string | null) => void
   /** 选一个磁片组（按顺序执行） */
   onPickGroup?: (groupId: string) => void
+  /** 磁片组的分组说明（长按绑定时语义不同） */
+  groupHint?: string
   onCreate: () => void
   onClose: () => void
 }) {
@@ -115,7 +118,7 @@ export function MagnetPicker({
           {groups && groups.length > 0 && onPickGroup && (
             <>
               <p className="px-1 pb-1 pt-4 text-[10px] text-text-tertiary">
-                磁片组（按顺序依次执行）
+                {groupHint ?? '磁片组（按顺序依次执行）'}
               </p>
               <ul className="flex flex-col gap-1.5">
                 {groups.map((group) => (

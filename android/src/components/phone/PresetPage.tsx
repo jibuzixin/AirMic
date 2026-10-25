@@ -178,7 +178,7 @@ function countMicBindings(preset: Preset): number {
   return (
     (preset.micPressId ? 1 : 0) +
     (preset.micReleaseId ? 1 : 0) +
-    (preset.micHoldId ? 1 : 0)
+    (preset.micHoldId || preset.micHoldGroupId ? 1 : 0)
   )
 }
 

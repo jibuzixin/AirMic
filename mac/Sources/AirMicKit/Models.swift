@@ -181,6 +181,10 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
     public var micReleaseId: String?
     /// 长按说话时执行的磁铁 id（按下保持、松手释放，与上面两个互相独立）
     public var micHoldId: String?
+    /// 长按说话时执行的磁片组 id（和 `micHoldId` 二选一）
+    ///
+    /// 组的长按语义在手机端实现：第一步跟着手指按住，松手后其余步骤依次执行。
+    public var micHoldGroupId: String?
     /// 独立快捷键磁贴（0–6 个）
     public var tiles: [Tile]
     public var isDefault: Bool?
@@ -194,6 +198,7 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
         micPressId: String? = nil,
         micReleaseId: String? = nil,
         micHoldId: String? = nil,
+        micHoldGroupId: String? = nil,
         tiles: [Tile] = [],
         isDefault: Bool? = nil
     ) {
@@ -205,6 +210,7 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
         self.micPressId = micPressId
         self.micReleaseId = micReleaseId
         self.micHoldId = micHoldId
+        self.micHoldGroupId = micHoldGroupId
         self.tiles = tiles
         self.isDefault = isDefault
     }

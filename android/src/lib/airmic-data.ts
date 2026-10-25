@@ -52,6 +52,13 @@ export type Preset = {
   micReleaseId: string | null
   /** 长按说话时执行的磁片 id（按下保持、松手释放，与上面两个独立） */
   micHoldId?: string | null
+  /**
+   * 长按说话时执行的磁片组 id（和 micHoldId 二选一）
+   *
+   * 语义：组里第一个组合键跟着手指按住，松手后释放，
+   * 剩下的步骤再按 intervalSeconds 依次执行。
+   */
+  micHoldGroupId?: string | null
   /** 独立快捷键磁贴（0–6 个） */
   tiles: Tile[]
   /** 是否为默认预案 */

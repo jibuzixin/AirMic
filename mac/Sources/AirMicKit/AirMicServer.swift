@@ -86,6 +86,8 @@ public final class AirMicServer: ObservableObject {
             guard let self else { return }
             if !connected {
                 self.connectedClient = nil
+                // 手机断线时把可能还按着的组合键松开，否则电脑上会一直卡住
+                self.hotkeyExecutor.release()
                 self.onMain { self.connectedPhoneName = nil }
             }
         }
@@ -375,6 +377,8 @@ public final class AirMicServer: ObservableObject {
                 audioReceiver?.resetDecoder()
             } else if mode == .idle {
                 audioReceiver?.resetDecoder()
+                // 兜底：长按的「松开」如果没收到，手机停止收音时强制松开
+                hotkeyExecutor.release()
             }
             onMain { self.phoneMicMode = mode }
         default:

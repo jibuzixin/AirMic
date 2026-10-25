@@ -264,6 +264,16 @@ public final class AirMicServer: ObservableObject {
         Log.info(enabled ? "1kHz 测试音：开" : "1kHz 测试音：关")
     }
 
+    /// 音频输出的自检数据（写到设备的帧数 / 峰值）
+    public var audioOutputDebug: (renderedFrames: Int, peak: Double, queued: Int, underruns: Int) {
+        (
+            audioWriter.renderedFrames,
+            audioWriter.peakAmplitude,
+            audioWriter.queuedFrames,
+            audioWriter.underrunCount
+        )
+    }
+
     public func setBufferMs(_ ms: Int) {
         config.bufferMs = max(10, min(500, ms))
         configStore.save(config)

@@ -51,16 +51,25 @@ public final class VirtualAudioWriter {
         stop()
         self.deviceID = deviceID
 
+        // 重新开始收音时把自检数据清零
+        renderedFrames = 0
+        peakAmplitude = 0
+        underrunCount = 0
+        hasReceivedAudio = false
+
         streamFormat = Self.outputStreamFormat(for: deviceID)
         Log.info("虚拟设备格式：\(streamFormat.mSampleRate)Hz / \(streamFormat.mChannelsPerFrame)ch / \(streamFormat.mBitsPerChannel)bit")
 
         var newProcID: AudioDeviceIOProcID?
         let status = AudioDeviceCreateIOProcID(
             deviceID,
-            { _, _, inputData, _, _, _, clientData in
+            // 参数顺序：device, now, **inInputData**, inInputTime,
+            //           **outOutputData**, inOutputTime, clientData
+            // ⚠️ 必须写第 5 个（输出），写第 3 个（输入）等于什么都没输出
+            { _, _, _, _, outputData, _, clientData in
                 guard let clientData else { return noErr }
                 let writer = Unmanaged<VirtualAudioWriter>.fromOpaque(clientData).takeUnretainedValue()
-                writer.fill(inputData)
+                writer.fill(outputData)
                 return noErr
             },
             Unmanaged.passUnretained(self).toOpaque(),
@@ -71,7 +80,6 @@ public final class VirtualAudioWriter {
         }
         procID = newProcID
 
-        // 真正带上下文的回调（上面那个只是占位，见 startDeviceIOProc）
         let startStatus = AudioDeviceStart(deviceID, newProcID)
         guard startStatus == noErr else {
             AudioDeviceDestroyIOProcID(deviceID, newProcID)
@@ -95,6 +103,7 @@ public final class VirtualAudioWriter {
     /// 塞一段 PCM16 单声道数据进环形缓冲
     public func enqueue(pcm16: Data) {
         buffer.write(pcm16)
+        hasReceivedAudio = true
     }
 
     /// 缓冲里还剩多少采样
@@ -102,57 +111,57 @@ public final class VirtualAudioWriter {
         buffer.availableFrames
     }
 
-    /// 在 IO 回调里把环形缓冲里的 PCM 填进设备缓冲
+    /// 欠载次数（缓冲里没数据，只能补静音）
+    public private(set) var underrunCount = 0
+    /// 已经真正写进设备输出缓冲的帧数（排查「有没有写出去」用）
+    public private(set) var renderedFrames = 0
+    /// 写出去的最大振幅（0–1）
+    public private(set) var peakAmplitude: Double = 0
+    /// 收到过音频没有 —— 没收到之前的「空回调」不算欠载
+    private var hasReceivedAudio = false
+
+    /// 在 IO 回调里把环形缓冲里的 PCM 填进设备输出缓冲
     ///
-    /// ⚠️ 这是实时线程：不要在这里分配内存、不要加锁超过必要时间。
-    private func fill(_ inputData: UnsafePointer<AudioBufferList>) {
-        let buffers = UnsafeMutableAudioBufferListPointer(
-            UnsafeMutablePointer(mutating: inputData)
-        )
+    /// ⚠️ 这是实时线程：不要在这里分配内存、不要做重活。
+    private func fill(_ outputData: UnsafeMutablePointer<AudioBufferList>) {
+        let buffers = UnsafeMutableAudioBufferListPointer(outputData)
         guard buffers.count > 0 else { return }
 
-        let channels = Int(streamFormat.mChannelsPerFrame)
-        let bytesPerSample = Int(streamFormat.mBitsPerChannel / 8)
-        let bytesPerFrame = bytesPerSample * channels
+        let channels = max(1, Int(streamFormat.mChannelsPerFrame))
+        let bytesPerSample = max(1, Int(streamFormat.mBitsPerChannel / 8))
         let isFloat = streamFormat.mFormatFlags & kAudioFormatFlagIsFloat != 0
-        let isSigned = streamFormat.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0
         let isInterleaved = streamFormat.mFormatFlags & kAudioFormatFlagIsNonInterleaved == 0
 
-        // 这一轮要写多少帧
-        let frames = buffers[0].mDataByteSize / UInt32(max(bytesPerFrame, 1))
+        // 帧数：交错时一个 buffer 装所有声道；非交错时每个 buffer 一个声道
+        let bytesPerFrame = bytesPerSample * (isInterleaved ? channels : 1)
+        let frames = Int(buffers[0].mDataByteSize) / max(bytesPerFrame, 1)
+        guard frames > 0 else { return }
 
-        // 测试音：直接生成 1kHz 正弦波
+        // 测试音：直接生成 1kHz 正弦波（用来验证「写设备」这一段）
         if testToneEnabled {
             let step = 2 * Double.pi * 1000 / streamFormat.mSampleRate
-            for index in 0..<Int(frames) {
-                let value = Float(sin(testTonePhase)) * 0.25
+            for frame in 0..<frames {
+                let tone = sin(testTonePhase) * 0.25
+                renderedFrames += 1
+                if abs(tone) > peakAmplitude { peakAmplitude = abs(tone) }
+                writeSample(
+                    tone,
+                    frame: frame,
+                    buffers: buffers,
+                    channels: channels,
+                    bytesPerSample: bytesPerSample,
+                    isFloat: isFloat,
+                    isInterleaved: isInterleaved
+                )
                 testTonePhase += step
                 if testTonePhase > 2 * Double.pi { testTonePhase -= 2 * Double.pi }
-                let sample = Int16(value * 32767)
-                for bufferIndex in 0..<buffers.count {
-                    guard let data = buffers[bufferIndex].mData else { continue }
-                    let capacity = Int(buffers[bufferIndex].mDataByteSize)
-                    let stride = capacity / max(Int(frames), 1)
-                    let offset = min(index * stride, max(capacity - bytesPerSample, 0))
-                    if isFloat {
-                        var out = value
-                        if bytesPerSample == 4 {
-                            memcpy(data.advanced(by: offset), &out, 4)
-                        } else {
-                            var half = Float16(value)
-                            memcpy(data.advanced(by: offset), &half, 2)
-                        }
-                    } else {
-                        var out = UInt16(bitPattern: sample)
-                        memcpy(data.advanced(by: offset), &out, min(bytesPerSample, 2))
-                    }
-                }
             }
             return
         }
 
-        // 欠载 → 补静音
-        guard let mono = buffer.read(frames: Int(frames)) else {
+        // 欠载：没有数据就补静音（收到过音频之后才算真欠载）
+        guard let mono = buffer.read(frames: frames) else {
+            if hasReceivedAudio { underrunCount += 1 }
             for index in 0..<buffers.count {
                 if let data = buffers[index].mData {
                     memset(data, 0, Int(buffers[index].mDataByteSize))
@@ -161,55 +170,92 @@ public final class VirtualAudioWriter {
             return
         }
 
-        for index in 0..<buffers.count {
-            guard let data = buffers[index].mData else { continue }
-            let capacity = Int(buffers[index].mDataByteSize)
+        for frame in 0..<mono.count {
+            let sample = Double(mono[frame]) / 32768.0
+            renderedFrames += 1
+            if abs(sample) > peakAmplitude { peakAmplitude = abs(sample) }
+            writeSample(
+                sample,
+                frame: frame,
+                buffers: buffers,
+                channels: channels,
+                bytesPerSample: bytesPerSample,
+                isFloat: isFloat,
+                isInterleaved: isInterleaved
+            )
+        }
+    }
 
-            if isInterleaved {
-                var offset = 0
-                for frame in 0..<mono.count {
-                    for channel in 0..<channels {
-                        var value = Self.convert(
-                            mono[frame], isFloat: isFloat, isSigned: isSigned
-                        )
-                        if offset + bytesPerSample <= capacity {
-                            memcpy(data.advanced(by: offset), &value, bytesPerSample)
-                        }
-                        offset += bytesPerSample
-                    }
-                }
-            } else {
-                let stride = buffers[index].mDataByteSize / UInt32(max(Int(frames), 1))
-                for frame in 0..<mono.count {
-                    var value = Self.convert(
-                        mono[frame], isFloat: isFloat, isSigned: isSigned
-                    )
-                    let offset = Int(stride) * frame
-                    if offset + bytesPerSample <= capacity {
-                        memcpy(data.advanced(by: offset), &value, bytesPerSample)
-                    }
-                }
+    /// 把同一个采样写进所有声道
+    private func writeSample(
+        _ value: Double,
+        frame: Int,
+        buffers: UnsafeMutableAudioBufferListPointer,
+        channels: Int,
+        bytesPerSample: Int,
+        isFloat: Bool,
+        isInterleaved: Bool
+    ) {
+        if isInterleaved {
+            guard buffers.count > 0, let data = buffers[0].mData else { return }
+            let capacity = Int(buffers[0].mDataByteSize)
+            let base = frame * channels * bytesPerSample
+            for channel in 0..<channels {
+                writeOne(
+                    value,
+                    to: data,
+                    offset: base + channel * bytesPerSample,
+                    bytesPerSample: bytesPerSample,
+                    isFloat: isFloat,
+                    capacity: capacity
+                )
+            }
+        } else {
+            for index in 0..<buffers.count {
+                guard let data = buffers[index].mData else { continue }
+                writeOne(
+                    value,
+                    to: data,
+                    offset: frame * bytesPerSample,
+                    bytesPerSample: bytesPerSample,
+                    isFloat: isFloat,
+                    capacity: Int(buffers[index].mDataByteSize)
+                )
             }
         }
     }
 
-    /// 单声道 Int16 → 目标采样格式
-    private static func convert(_ sample: Int16, isFloat: Bool, isSigned: Bool) -> UInt32 {
+    /// 按设备实际格式写一个采样（float16/32/64、int16/32）
+    private func writeOne(
+        _ value: Double,
+        to data: UnsafeMutableRawPointer,
+        offset: Int,
+        bytesPerSample: Int,
+        isFloat: Bool,
+        capacity: Int
+    ) {
+        guard offset >= 0, offset + bytesPerSample <= capacity else { return }
         if isFloat {
-            var out = Float(sample) / 32768.0
-            return withUnsafeBytes(of: &out) { raw in
-                raw.loadUnaligned(as: UInt32.self)
+            switch bytesPerSample {
+            case 2:
+                var v = Float16(value)
+                memcpy(data + offset, &v, 2)
+            case 8:
+                var v = value
+                memcpy(data + offset, &v, 8)
+            default:
+                var v = Float(value)
+                memcpy(data + offset, &v, 4)
             }
-        }
-        if isSigned {
-            var out = UInt16(bitPattern: sample)
-            return withUnsafeBytes(of: &out) { raw in
-                UInt32(raw.loadUnaligned(as: UInt16.self))
+        } else {
+            switch bytesPerSample {
+            case 4:
+                var v = Int32(clamping: Int((value * 2_147_483_647).rounded()))
+                memcpy(data + offset, &v, 4)
+            default:
+                var v = Int16(clamping: Int((value * 32_767).rounded()))
+                memcpy(data + offset, &v, 2)
             }
-        }
-        var out = UInt32(sample)
-        return withUnsafeBytes(of: &out) { raw in
-            raw.loadUnaligned(as: UInt32.self)
         }
     }
 

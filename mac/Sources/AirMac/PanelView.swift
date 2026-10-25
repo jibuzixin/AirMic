@@ -108,20 +108,36 @@ struct PanelView: View {
 
     /// 没有辅助功能权限，手机点磁贴不会有反应 —— 明确告诉用户去哪儿开
     private var accessibilityHint: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11))
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.amber)
+                Text("快捷键需要「辅助功能」权限")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer(minLength: 0)
+                Button("去授权") {
+                    state.requestAccessibilityPermission()
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(Theme.amber)
-            Text("快捷键需要「辅助功能」权限")
-                .font(.system(size: 11))
-                .foregroundStyle(Theme.textSecondary)
-            Spacer(minLength: 0)
-            Button("去授权") {
-                state.requestAccessibilityPermission()
             }
-            .buttonStyle(.plain)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(Theme.amber)
+
+            if state.accessibilityHintShown {
+                HStack(spacing: 6) {
+                    Text("如果已经打开还是不行：把 AirMic 从列表里删掉再加回来（重新打包会换签名，旧授权会失效）")
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textTertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
+                    Button("重新检测") { state.recheckAccessibility() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Theme.textSecondary)
+                }
+            }
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)

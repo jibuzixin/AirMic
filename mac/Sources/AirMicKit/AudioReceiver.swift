@@ -162,7 +162,8 @@ public final class AudioReceiver {
         return Stats(
             packetLoss: loss,
             jitterMs: jitterMs,
-            underruns: underruns,
+            // 欠载是写入端统计的（缓冲里没数据）
+            underruns: writer.underrunCount,
             latencyMs: nil
         )
     }

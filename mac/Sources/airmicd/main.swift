@@ -55,7 +55,8 @@ case "serve":
                 let stats = server.stats
                 let loss = stats.packetLoss.map { String(format: "%.1f%%", $0) } ?? "--"
                 let latency = stats.latencyMs.map { String(format: "%.0fms", $0) } ?? "--"
-                print("[audio] 丢包 \(loss) 欠载 \(stats.underruns ?? 0) 延迟 \(latency)")
+                let debug = server.audioOutputDebug
+                print("[audio] 丢包 \(loss) 欠载 \(stats.underruns ?? 0) 延迟 \(latency) | 写设备 \(debug.renderedFrames) 帧 峰值 \(String(format: "%.2f", debug.peak)) 缓冲 \(debug.queued)")
             }
         }
 

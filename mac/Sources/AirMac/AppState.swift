@@ -42,13 +42,27 @@ final class AppState: ObservableObject {
     @Published private(set) var devices: [AudioDevice] = []
     /// 1kHz 测试音开关
     @Published var testToneOn = false
+    /// 辅助功能权限（定时自检，用户授权后提示会自动消失）
+    @Published private(set) var accessibilityGranted = HotkeyExecutor.hasAccessibilityPermission
+    /// 用户点了「去授权」后的引导状态
+    @Published var accessibilityHintShown = false
 
     // MARK: - 动作
 
     /// 服务端由 `AirMicServer.shared.startOnLaunch()` 在 App 启动时拉起，
     /// 这里**不要**再 start 一遍（会撞端口）。
+    private var permissionTimer: Timer?
+
     func start() {
         refreshDevices()
+        // 周期性自检：用户在系统设置里打开开关后，提示要自动消失
+        permissionTimer?.invalidate()
+        let timer = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            Task { @MainActor in self.recheckAccessibility() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        permissionTimer = timer
     }
 
     /// 重新枚举音频输出设备
@@ -66,13 +80,26 @@ final class AppState: ObservableObject {
     }
 
     /// 电脑端有没有辅助功能权限（没有的话快捷键发不出去）
-    var hasAccessibilityPermission: Bool {
-        HotkeyExecutor.hasAccessibilityPermission
-    }
+    var hasAccessibilityPermission: Bool { accessibilityGranted }
 
-    /// 请求辅助功能权限
+    /// 请求辅助功能权限，并打开系统设置里对应的那一页
     func requestAccessibilityPermission() {
         HotkeyExecutor.requestAccessibilityPermission()
+        accessibilityHintShown = true
+        if let url = URL(
+            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"
+        ) {
+            NSWorkspace.shared.open(url)
+        }
+        recheckAccessibility()
+    }
+
+    /// 重新检查一次权限（也由定时器调用）
+    func recheckAccessibility() {
+        let granted = HotkeyExecutor.hasAccessibilityPermission
+        if granted != accessibilityGranted {
+            accessibilityGranted = granted
+        }
     }
 
     /// 面板上的输出设备下拉

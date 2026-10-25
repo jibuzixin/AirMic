@@ -4,19 +4,20 @@ import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { fadeFast, springSmooth } from '@/lib/motion'
 import { usePhoneOverlay } from './PhoneOverlay'
+import { useBackHandler } from '@/lib/back-stack'
 import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
 import { HotkeyRecorder, recorderState } from './HotkeyRecorder'
 import { MagnetIconPicker } from './MagnetIconPicker'
 
 /**
- * 磁铁编辑器
+ * 磁片编辑器
  * ------------------------------------------------------------
- * 添加 / 编辑一个磁铁，三步：
+ * 添加 / 编辑一个磁片，三步：
  *   1. 挑一个图标
  *   2. 起一个名字
  *   3. 用内置的键盘 + 鼠标菜单，依次点出想要的组合键
  *
- * 磁铁是**全局共享**的：预案磁贴和麦克风按钮的按下/松开都引用它。
+ * 磁片是**全局共享**的：预案磁贴和麦克风按钮的按下/松开都引用它。
  */
 export function MagnetEditor({
   magnet,
@@ -28,6 +29,8 @@ export function MagnetEditor({
   onSave: (magnet: Omit<HotkeyMagnet, 'id'>) => void
   onClose: () => void
 }) {
+  useBackHandler(onClose)
+
   const [label, setLabel] = useState(magnet?.label ?? '')
   const [icon, setIcon] = useState(magnet?.icon ?? 'Command')
   const [rec, setRec] = useState(() => recorderState(magnet))
@@ -70,7 +73,7 @@ export function MagnetEditor({
         </div>
         <div className="flex items-center justify-between px-4 pb-2 pt-2">
           <h2 className="text-[15px] font-semibold text-text-primary">
-            {magnet ? '编辑磁铁' : '新建磁铁'}
+            {magnet ? '编辑磁片' : '新建磁片'}
           </h2>
           <button
             type="button"
@@ -98,7 +101,7 @@ export function MagnetEditor({
               value={label}
               onChange={(e) => setLabel(e.target.value)}
               placeholder="比如「语音输入」"
-              aria-label="磁铁名字"
+              aria-label="磁片名字"
               className="mt-2 w-full rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2 text-[13px] text-text-primary outline-none placeholder:text-text-faint focus:border-border-strong"
             />
           </section>
@@ -129,7 +132,7 @@ export function MagnetEditor({
 
           {!hasKey && (
             <p className="mt-3 text-[11px]" style={{ color: 'var(--color-recording)' }}>
-              还没选主键 —— 磁铁要有至少一个键才能保存
+              还没选主键 —— 磁片要有至少一个键才能保存
             </p>
           )}
 
@@ -148,7 +151,7 @@ export function MagnetEditor({
               disabled={!canSave}
               className="h-10 flex-1 rounded-[10px] bg-amber-accent text-[13px] font-medium text-surface-0 transition-opacity disabled:opacity-40"
             >
-              保存磁铁
+              保存磁片
             </button>
             <button
               type="button"
@@ -165,7 +168,7 @@ export function MagnetEditor({
   )
 }
 
-/** 磁铁在列表里显示的组合键（没配键时的占位） */
+/** 磁片在列表里显示的组合键（没配键时的占位） */
 export function magnetKeyLabel(magnet: HotkeyMagnet | null | undefined): string {
   if (!magnet) return '未设置'
   return magnetHasKey(magnet) ? magnetKeys(magnet) : '未设置'

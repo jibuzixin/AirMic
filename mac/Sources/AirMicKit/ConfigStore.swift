@@ -12,6 +12,8 @@ public struct AirMicConfig: Codable, Equatable {
     public var outputDeviceId: String
     /// 抖动缓冲（毫秒）
     public var bufferMs: Int
+    /// 静默多少秒后自动停止收音（0 = 不自动关）
+    public var silenceSeconds: Int?
 
     public static var empty: AirMicConfig {
         AirMicConfig(magnets: [], presets: [], revision: 0, outputDeviceId: "", bufferMs: 60)
@@ -22,13 +24,15 @@ public struct AirMicConfig: Codable, Equatable {
         presets: [Preset] = [],
         revision: Int = 0,
         outputDeviceId: String = "",
-        bufferMs: Int = 60
+        bufferMs: Int = 60,
+        silenceSeconds: Int? = 10
     ) {
         self.magnets = magnets
         self.presets = presets
         self.revision = revision
         self.outputDeviceId = outputDeviceId
         self.bufferMs = bufferMs
+        self.silenceSeconds = silenceSeconds
     }
 }
 

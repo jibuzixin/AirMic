@@ -60,6 +60,8 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        // 打开应用就默认开始收音（用户要求）
+        AirMicServer.shared.autoRecordOnLaunch = true
         AirMicServer.shared.startOnLaunch()
 
         setupStatusItem()

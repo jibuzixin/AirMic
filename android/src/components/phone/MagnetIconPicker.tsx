@@ -2,9 +2,9 @@ import { createElement } from 'react'
 import { ICON_CHOICES } from './icons'
 
 /**
- * 磁铁图标选择
+ * 磁片图标选择
  * ------------------------------------------------------------
- * 磁铁 = 图标 + 名字 + 按键组合。图标是这个弹层里的第一件事。
+ * 磁片 = 图标 + 名字 + 按键组合。图标是这个弹层里的第一件事。
  */
 export function MagnetIconPicker({
   value,

@@ -1,5 +1,6 @@
 import { PhoneShell } from '@/components/phone/PhoneShell'
 import { useAirmic } from '@/lib/airmic-store'
+import { BackStackProvider } from '@/lib/back-stack'
 
 /**
  * 安卓端 App 入口
@@ -17,7 +18,9 @@ export default function App() {
       className="h-full w-full overflow-hidden bg-surface-0 text-text-primary"
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
     >
-      <PhoneShell mode="full" />
+      <BackStackProvider>
+        <PhoneShell mode="full" />
+      </BackStackProvider>
     </div>
   )
 }

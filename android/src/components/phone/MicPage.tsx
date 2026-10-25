@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { AlertTriangle, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, SlidersHorizontal, RefreshCw } from 'lucide-react'
 import { LevelRing } from '@/components/LevelRing'
 import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
 import { fadeFast, springSmooth } from '@/lib/motion'
 import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
-import { TileGrid } from './TileGrid'
+import { TileGrid, type TileEntry } from './TileGrid'
 
 /**
  * 手机端麦克风页 —— 主控界面
@@ -21,7 +21,7 @@ import { TileGrid } from './TileGrid'
  *   ① 麦克风按钮自己的「按下 / 松开」快捷键  → 环下方的两枚键位芯片
  *   ② 独立的快捷键磁贴                        → 底部 3×2
  *
- * 两处快捷键都引用「磁铁」：图标 + 名字 + 一组按键，全局共享。
+ * 两处快捷键都引用「磁片」：图标 + 名字 + 一组按键，全局共享。
  */
 export function MicPage({
   onOpenPresets,
@@ -34,6 +34,7 @@ export function MicPage({
   const {
     micMode,
     paired,
+    connected,
     pairedDevice,
     foregroundApp,
     presetNotice,
@@ -44,11 +45,17 @@ export function MicPage({
     endPushToTalk,
     micBlockedNotice,
     dismissMicBlocked,
+    groups,
+    runGroup,
+    runningGroupId,
     fireMagnet,
     holdTileMagnet,
     releaseTileMagnet,
     remoteError,
     dismissRemoteError,
+    micAutoStopNotice,
+    dismissMicAutoStop,
+    reconnect,
     micLevel,
   } = useAirmic()
   const preset = useActivePreset()
@@ -87,6 +94,14 @@ export function MicPage({
     }
   }, [])
 
+  /** 静默自动关麦的提示 */
+  useEffect(() => {
+    if (!micAutoStopNotice) return
+    showToast(micAutoStopNotice)
+    const timer = window.setTimeout(dismissMicAutoStop, 2600)
+    return () => window.clearTimeout(timer)
+  }, [dismissMicAutoStop, micAutoStopNotice, showToast])
+
   /**
    * 电脑端返回的错误（比如快捷键没有辅助功能权限）——
    * 直接显示出来，不然用户点了没反应又不知道原因。
@@ -109,16 +124,22 @@ export function MicPage({
     return () => window.clearTimeout(timer)
   }, [dismissMicBlocked, micBlockedNotice, showToast])
 
-  /* ---------- 磁铁解析 ---------- */
+  /* ---------- 磁片解析 ---------- */
 
-  /** 磁贴只引用磁铁 id，这里解析成磁铁本体 */
-  const tileMagnets = useMemo(
-    () =>
-      (preset?.tiles ?? [])
-        .map((tile) => magnets.find((m) => m.id === tile.magnetId))
-        .filter((magnet): magnet is HotkeyMagnet => magnet !== undefined),
-    [preset?.tiles, magnets],
-  )
+  /** 磁贴引用磁片或磁片组，这里解析成本体 */
+  const tileItems = useMemo(() => {
+    const entries: TileEntry[] = []
+    for (const tile of preset?.tiles ?? []) {
+      if (tile.groupId) {
+        const group = groups.find((g) => g.id === tile.groupId)
+        if (group) entries.push({ key: tile.id, kind: 'group', group })
+        continue
+      }
+      const magnet = magnets.find((m) => m.id === tile.magnetId)
+      if (magnet) entries.push({ key: tile.id, kind: 'magnet', magnet })
+    }
+    return entries
+  }, [groups, magnets, preset?.tiles])
 
   const pressMagnet = useMemo(
     () => magnets.find((m) => m.id === preset?.micPressId) ?? null,
@@ -215,20 +236,20 @@ export function MicPage({
             <span
               className="size-1.5 shrink-0 rounded-full"
               style={{
-                background: paired
+                background: connected
                   ? 'var(--color-connected)'
                   : 'var(--color-text-tertiary)',
               }}
-              aria-label={paired ? '已连接' : '未连接'}
+              aria-label={connected ? '已连接' : '未连接'}
             />
             <span
               className={
-                paired
+                connected
                   ? 'truncate text-[13px] font-medium text-text-primary'
                   : 'truncate text-[13px] font-medium text-text-tertiary'
               }
             >
-              {pairedDevice?.name ?? (paired ? '已连接' : '未连接')}
+              {pairedDevice?.name ?? (connected ? '已连接' : '未连接')}
             </span>
             <span className="tabular shrink-0 text-[11px] text-text-tertiary">
               {foregroundApp.name}
@@ -275,6 +296,16 @@ export function MicPage({
             </span>
           )}
         </div>
+        {!connected && (
+          <button
+            type="button"
+            onClick={reconnect}
+            className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-border-subtle bg-surface-1 py-1.5 text-[11px] text-text-secondary active:scale-[0.99]"
+          >
+            <RefreshCw size={11} strokeWidth={1.8} />
+            未连接电脑 · 点此重连
+          </button>
+        )}
       </header>
 
       {/* ---------- 电脑端没在收音的提醒条 ----------
@@ -353,11 +384,16 @@ export function MicPage({
       {/* ---------- 独立快捷键磁贴 ---------- */}
       <div className="shrink-0 px-4 pb-4">
         <TileGrid
-          magnets={tileMagnets}
+          items={tileItems}
           onFire={handleFire}
           onUnbound={handleUnbound}
           onHoldStart={handleHoldStart}
           onHoldEnd={handleHoldEnd}
+          onRunGroup={(group) => {
+            runGroup(group)
+            showToast(`执行「${group.name}」· ${group.steps.length} 步`)
+          }}
+          runningGroupId={runningGroupId}
         />
       </div>
 

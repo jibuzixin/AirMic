@@ -1,12 +1,12 @@
 /**
- * 快捷键「磁铁」
+ * 快捷键「磁片」
  * ------------------------------------------------------------
- * 一个磁铁 = 图标 + 名字 + 一组按键（键盘 + 鼠标）。
+ * 一个磁片 = 图标 + 名字 + 一组按键（键盘 + 鼠标）。
  *
  * 它是**可复用**的：
- *   - 预案底部的磁贴引用磁铁
- *   - 麦克风按钮的「按下 / 松开」也引用磁铁
- * 所以磁铁库是全局的，不属于某一套预案。
+ *   - 预案底部的磁贴引用磁片
+ *   - 麦克风按钮的「按下 / 松开」也引用磁片
+ * 所以磁片库是全局的，不属于某一套预案。
  *
  * 显示串（⌘⇧V）和发给电脑的组合键（['cmd','shift','v']）都是**算出来的**，
  * 不作为字段存 —— 避免两处数据不一致。
@@ -18,7 +18,7 @@ export type MouseKey = 'left' | 'right' | 'middle' | 'wheelUp' | 'wheelDown'
 
 export type HotkeyMagnet = {
   id: string
-  /** 磁铁的名字 */
+  /** 磁片的名字 */
   label: string
   /** 图标名（lucide-react） */
   icon: string
@@ -174,7 +174,7 @@ export function magnetCombo(magnet: HotkeyMagnet | null | undefined): string[] {
   return combo
 }
 
-/** 磁铁是否已经配了至少一个键 */
+/** 磁片是否已经配了至少一个键 */
 export function magnetHasKey(magnet: HotkeyMagnet | null | undefined): boolean {
   if (!magnet) return false
   return magnet.mouse !== null || magnet.key !== null

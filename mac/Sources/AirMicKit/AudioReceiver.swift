@@ -38,6 +38,8 @@ public final class AudioReceiver {
     private(set) var underruns = 0
     private(set) var jitterMs: Double?
     private(set) var lastArrival: TimeInterval?
+    /// 最后一包音频到达的墙钟时间（静默检测用）
+    private(set) var lastPacketAt: Date?
 
     private var expectedSequence: UInt16?
     private var lastTimestampMicros: UInt32?
@@ -128,6 +130,7 @@ public final class AudioReceiver {
         if receivedPackets == 0 {
             Log.info("收到第一包音频：\(data.count) 字节（AU \(payload.count) 字节）")
         }
+        lastPacketAt = Date()
         receivedPackets += 1
 
         // 丢包统计：序号跳变

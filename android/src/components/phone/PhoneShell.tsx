@@ -32,7 +32,7 @@ export function PhoneShell({
   const [page, setPage] = useState<'mic' | 'preset' | 'magnets'>('mic')
   /** 正在编辑的预案 id；null = 抽屉关闭 */
   const [editingId, setEditingId] = useState<string | null>(null)
-  /** 二级弹层（磁铁选择器 / 磁铁编辑器）的挂载点 */
+  /** 二级弹层（磁片选择器 / 磁片编辑器）的挂载点 */
   const [overlayEl, setOverlayEl] = useState<HTMLElement | null>(null)
 
   // 重新连上以后回到麦克风页，不要停在预案页。

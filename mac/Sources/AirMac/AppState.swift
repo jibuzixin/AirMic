@@ -36,6 +36,7 @@ final class AppState: ObservableObject {
     var hasPendingPairRequest: Bool { server.hasPendingPairRequest }
     var outputDeviceId: String { server.config.outputDeviceId }
     var bufferMs: Int { server.config.bufferMs }
+    var silenceSeconds: Int { server.silenceSeconds }
 
     /// 可选的音频输出设备（面板下拉）
     @Published private(set) var devices: [AudioDevice] = []
@@ -109,6 +110,11 @@ final class AppState: ObservableObject {
     /// 抖动缓冲
     func setBuffer(_ ms: Int) {
         server.setBufferMs(ms)
+    }
+
+    /// 静默自动关闭（秒，0 = 关）
+    func setSilence(_ seconds: Int) {
+        server.setSilenceSeconds(seconds)
     }
 
     /// 把诊断日志复制到剪贴板（直接粘给开发看）

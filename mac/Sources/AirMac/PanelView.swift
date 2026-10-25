@@ -273,6 +273,29 @@ struct PanelView: View {
                     .frame(width: 42, alignment: .trailing)
             }
 
+            // 静默多久自动停止收音（0 = 不自动关）—— 省电
+            HStack(spacing: 8) {
+                Text("静默自动关闭")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Spacer(minLength: 0)
+                Text(state.silenceSeconds == 0 ? "关闭" : "\(state.silenceSeconds)s")
+                    .tabularNumbers()
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Stepper(
+                    "",
+                    value: Binding(
+                        get: { state.silenceSeconds },
+                        set: { state.setSilence($0) }
+                    ),
+                    in: 0...120,
+                    step: 5
+                )
+                .labelsHidden()
+                .controlSize(.small)
+            }
+
             // 排查用：把现场数据一键交付
             HStack(spacing: 8) {
                 Button(state.diagnosticsCopied ? "已复制" : "复制诊断日志") {

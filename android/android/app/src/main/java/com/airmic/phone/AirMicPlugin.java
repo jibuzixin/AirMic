@@ -54,6 +54,8 @@ public class AirMicPlugin extends Plugin {
     private int currentPort = 47471;
 
     private final AtomicBoolean connecting = new AtomicBoolean(false);
+    /// 电平事件上一次发送时间（限频用）
+    private long lastLevelEmitAt = 0;
 
     @Override
     public void load() {
@@ -70,8 +72,13 @@ public class AirMicPlugin extends Plugin {
             });
         }
 
-        // 真实麦克风电平 → 界面上的电平表（原型里那是随机数假数据）
+        // 真实麦克风电平 → 界面上的电平表。
+        // ⚠️ 必须限频：采集侧约 47 次/秒，每次都过 JS 桥太费电。
+        // 界面上 12 次/秒完全够用（人眼也分不出来）。
         MicCapture.setGlobalLevelListener(level -> {
+            long now = android.os.SystemClock.elapsedRealtime();
+            if (now - lastLevelEmitAt < 80) return;
+            lastLevelEmitAt = now;
             JSObject payload = new JSObject();
             payload.put("level", level);
             notifyListeners("level", payload);

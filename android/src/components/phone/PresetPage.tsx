@@ -3,6 +3,7 @@ import { motion } from 'framer-motion'
 import { ChevronLeft, Command, Layers, ChevronRight, Plus, Unplug } from 'lucide-react'
 import { DragToConfirm } from '@/components/ui/drag-to-confirm'
 import { useAirmic } from '@/lib/airmic-store'
+import { useBackHandler } from '@/lib/back-stack'
 import { springSnappy } from '@/lib/motion'
 import type { Preset } from '@/lib/airmic-data'
 import { appIcon } from './icons'
@@ -29,6 +30,8 @@ export function PresetPage({
   onEditPreset: (presetId: string) => void
   onOpenMagnets: () => void
 }) {
+  useBackHandler(onBack)
+
   const {
     presets,
     magnets,
@@ -39,6 +42,8 @@ export function PresetPage({
     pairedDevice,
     themeMode,
     setThemeMode,
+    silenceSeconds,
+    setSilenceSeconds,
   } = useAirmic()
 
   return (
@@ -119,19 +124,59 @@ export function PresetPage({
           新建预案
         </button>
 
-        {/* ---------- 磁铁库 ---------- */}
+        {/* ---------- 磁片库 ---------- */}
         <button
           type="button"
           onClick={onOpenMagnets}
           className="mt-3 flex w-full items-center gap-2 rounded-xl border border-border-subtle bg-surface-1 px-3 py-3 text-left transition-colors hover:bg-surface-2"
         >
           <Command size={15} strokeWidth={1.8} className="text-text-secondary" />
-          <span className="flex-1 text-[12px] text-text-primary">磁铁库</span>
+          <span className="flex-1 text-[12px] text-text-primary">磁片库</span>
           <span className="tabular text-[11px] text-text-tertiary">
             {magnets.length} 个
           </span>
           <ChevronRight size={14} strokeWidth={1.8} className="text-text-tertiary" />
         </button>
+
+        {/* ---------- 省电 ---------- */}
+        <div className="mt-6">
+          <div className="rounded-xl border border-border-subtle bg-surface-1 p-3">
+            <p className="text-[11px] text-text-tertiary">省电</p>
+            <div className="mt-2 flex items-center justify-between gap-3">
+              <span className="text-[12px] text-text-secondary">
+                静默自动关闭麦克风
+              </span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  aria-label="减少静默时间"
+                  onClick={() =>
+                    setSilenceSeconds(Math.max(0, silenceSeconds - 5))
+                  }
+                  className="grid size-8 place-items-center rounded-[8px] border border-border-subtle text-[14px] text-text-secondary active:scale-95"
+                >
+                  −
+                </button>
+                <span className="tabular w-12 text-center text-[12px] text-text-primary">
+                  {silenceSeconds === 0 ? '关闭' : `${silenceSeconds}s`}
+                </span>
+                <button
+                  type="button"
+                  aria-label="增加静默时间"
+                  onClick={() =>
+                    setSilenceSeconds(Math.min(120, silenceSeconds + 5))
+                  }
+                  className="grid size-8 place-items-center rounded-[8px] border border-border-subtle text-[14px] text-text-secondary active:scale-95"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
+              常开收音时，超过这么久没有声音就自动关闭。
+            </p>
+          </div>
+        </div>
 
         {/* ---------- 外观 ---------- */}
         <div className="mt-6">
@@ -160,7 +205,7 @@ export function PresetPage({
               ))}
             </div>
             <p className="mt-2 text-[10px] text-text-faint">
-              版本 0.3.2 · 构建 {__BUILD_TIME__}
+              版本 0.3.3 · 构建 {__BUILD_TIME__}
             </p>
           </div>
         </div>

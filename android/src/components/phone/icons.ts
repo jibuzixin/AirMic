@@ -100,9 +100,9 @@ export function appIcon(name: string): LucideIcon {
 }
 
 /**
- * 可供磁铁选择的图标（精选，不把 lucide 全量打进 bundle）
+ * 可供磁片选择的图标（精选，不把 lucide 全量打进 bundle）
  * ------------------------------------------------------------
- * 新增磁铁时从这里挑一个图标 —— 磁铁 = 图标 + 名字 + 按键组合。
+ * 新增磁片时从这里挑一个图标 —— 磁片 = 图标 + 名字 + 按键组合。
  */
 export const ICON_CHOICES: { name: string; Icon: LucideIcon }[] = [
   { name: 'Mic', Icon: Mic },

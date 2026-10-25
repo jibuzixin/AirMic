@@ -1,3 +1,4 @@
+import { App } from '@capacitor/app'
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { Device } from './airmic-data'
 
@@ -41,6 +42,8 @@ export interface AirMicTransport {
   getInsets(): Promise<{ top: number; bottom: number }>
   /** 设置状态栏图标明暗（浅色背景 → 深色图标） */
   setSystemBars(lightBackground: boolean): Promise<void>
+  /** App 回到前台 / 退到后台 */
+  onAppStateChange(handler: (active: boolean) => void): void
 }
 
 /* ------------------------------------------------------------------ *
@@ -134,6 +137,10 @@ class NativeTransport implements AirMicTransport {
   async setSystemBars(lightBackground: boolean): Promise<void> {
     await AirMicNative.setSystemBars({ light: lightBackground })
   }
+
+  onAppStateChange(handler: (active: boolean) => void): void {
+    void App.addListener('appStateChange', (state) => handler(state.isActive))
+  }
 }
 
 /* ------------------------------------------------------------------ *
@@ -225,6 +232,10 @@ class LoopbackTransport implements AirMicTransport {
 
   async setSystemBars(): Promise<void> {
     /* 开发模式没有系统栏 */
+  }
+
+  onAppStateChange(): void {
+    /* 开发模式没有前后台切换 */
   }
 
   private emit(message: Record<string, any>) {

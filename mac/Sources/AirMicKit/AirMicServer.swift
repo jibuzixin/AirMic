@@ -72,6 +72,11 @@ public final class AirMicServer: ObservableObject {
 
     /// 开发期用：自动同意配对请求（生产版永远是 false）
     public var autoApprovePairing = false
+    /// 启动时自动开始收音（菜单栏 App 打开这个，CLI 不打开）
+    public var autoRecordOnLaunch = false
+
+    /// 这次收音是什么时候开始的（没收到包时用它算静默）
+    private var recordingStartedAt: Date?
 
     public init(deviceId: String = HostInfo.stableId) {
         self.deviceId = deviceId
@@ -97,6 +102,7 @@ public final class AirMicServer: ObservableObject {
 
     public func start() throws {
         config = configStore.load()
+        silenceSecondsValue = config.silenceSeconds ?? 10
         pairedDevices = pairingStore.allDevices()
         foregroundApp = foregroundWatcher.current
 
@@ -113,6 +119,9 @@ public final class AirMicServer: ObservableObject {
 
         if let preset = defaultPreset() {
             activePreset = preset
+        }
+        if autoRecordOnLaunch {
+            setRecording(true)
         }
         Log.info("AirMic 服务端已启动")
     }
@@ -136,6 +145,16 @@ public final class AirMicServer: ObservableObject {
             //   recv=0        → 音频包根本没到电脑（手机/网络）
             //   decoded=0     → 包到了但解不出来
             //   rendered=0    → 解出来了但没写进设备
+            // 静默自动关闭：一段时间没有任何音频包就停止收音（省电）
+            let silence = self.silenceSeconds
+            if silence > 0, self.isRecording {
+                let last = receiver.lastPacketAt ?? self.recordingStartedAt ?? Date()
+                if Date().timeIntervalSince(last) >= Double(silence) {
+                    Log.info("静默超过 \(silence)s，自动停止收音")
+                    self.setRecording(false)
+                }
+            }
+
             let debug = self.audioOutputDebug
             Log.info(String(
                 format: "[AUDIO] recv=%d lost=%d decoded=%.1fs empty=%d rendered=%.1fs peak=%.2f queued=%d underrun=%d",
@@ -189,14 +208,34 @@ public final class AirMicServer: ObservableObject {
 
     /// 开始 / 停止收音（面板主按钮）
     public func toggleRecording() {
-        isRecording.toggle()
-        if isRecording {
+        setRecording(!isRecording)
+    }
+
+    /// 设定收音开关（自动开麦 / 静默关闭都走这里）
+    public func setRecording(_ on: Bool) {
+        guard isRecording != on else { return }
+        isRecording = on
+        if on {
+            recordingStartedAt = Date()
             startAudioPipeline()
         } else {
+            recordingStartedAt = nil
             stopAudioPipeline()
         }
         broadcastState()
-        Log.info(isRecording ? "开始收音" : "停止收音")
+        Log.info(on ? "开始收音" : "停止收音")
+    }
+
+    /// 静默自动关闭的秒数（0 = 关闭）
+    @Published public private(set) var silenceSecondsValue: Int = 10
+
+    public var silenceSeconds: Int { silenceSecondsValue }
+
+    public func setSilenceSeconds(_ seconds: Int) {
+        let value = max(0, min(600, seconds))
+        config.silenceSeconds = value
+        configStore.save(config)
+        silenceSecondsValue = value
     }
 
     // MARK: - 音频管线

@@ -14,6 +14,7 @@ import {
   type Device,
   type ForegroundApp,
   type KnownApp,
+  type MagnetGroup,
   type Preset,
   type Stats,
 } from './airmic-data'
@@ -74,6 +75,10 @@ type Persisted = {
   devicePort: number | null
   /** 外观 */
   theme: ThemeMode
+  /** 静默多少秒自动关麦（0 = 关） */
+  silenceSeconds: number
+  /** 磁片组 */
+  groups: MagnetGroup[]
 }
 
 function loadPersisted(): Persisted {
@@ -87,6 +92,8 @@ function loadPersisted(): Persisted {
     deviceHost: null,
     devicePort: null,
     theme: 'system',
+    silenceSeconds: 10,
+    groups: [],
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -114,6 +121,8 @@ function loadPersisted(): Persisted {
       deviceHost: parsed.deviceHost ?? null,
       devicePort: parsed.devicePort ?? null,
       theme: parsed.theme ?? 'system',
+      silenceSeconds: typeof parsed.silenceSeconds === 'number' ? parsed.silenceSeconds : 10,
+      groups: parsed.groups ?? [],
     }
   } catch {
     return fallback
@@ -153,6 +162,12 @@ export type AirmicStore = {
   currentApp: KnownApp | null
   /** 电脑端返回的错误（比如快捷键没有权限） */
   remoteError: string | null
+  /** 是否真正连着电脑（不是「配对过」） */
+  connected: boolean
+  /** 静默自动关麦（秒，0 = 关） */
+  silenceSeconds: number
+  /** 静默自动关麦的提示 */
+  micAutoStopNotice: string | null
   /** 外观模式 */
   themeMode: ThemeMode
   /** 系统栏高度 */
@@ -185,15 +200,27 @@ export type AirmicStore = {
   updatePreset: (id: string, patch: Partial<Preset>) => void
   deletePreset: (id: string) => void
 
-  /* --- 磁铁 --- */
+  /* --- 磁片 --- */
   addMagnet: (magnet: Omit<HotkeyMagnet, 'id'>) => string
   updateMagnet: (id: string, patch: Partial<HotkeyMagnet>) => void
   deleteMagnet: (id: string) => void
 
+  /* --- 磁片组 --- */
+  groups: MagnetGroup[]
+  addGroup: (name: string) => string
+  updateGroup: (id: string, patch: Partial<MagnetGroup>) => void
+  deleteGroup: (id: string) => void
+  /** 新建或整体替换一个磁片组 */
+  upsertGroup: (group: MagnetGroup) => void
+  /** 依次执行组里的磁片（每步间隔 group.intervalSeconds） */
+  runGroup: (group: MagnetGroup) => void
+  /** 当前正在执行的组（用于界面提示） */
+  runningGroupId: string | null
+
   dismissMicBlocked: () => void
 
   /* --- 快捷键 --- */
-  /** 点磁贴：让电脑执行这个磁铁的组合键（按下+抬起） */
+  /** 点磁贴：让电脑执行这个磁片的组合键（按下+抬起） */
   fireMagnet: (magnet: HotkeyMagnet) => void
   /** 长按磁贴：按下组合键并保持 */
   holdTileMagnet: (magnet: HotkeyMagnet) => void
@@ -209,6 +236,13 @@ export type AirmicStore = {
 
   /* --- 外观 --- */
   setThemeMode: (mode: ThemeMode) => void
+
+  /* --- 省电 / 连接 --- */
+  /** 静默多少秒自动关麦（0 = 关） */
+  setSilenceSeconds: (seconds: number) => void
+  dismissMicAutoStop: () => void
+  /** 主动重连（回到前台 / 断线时用） */
+  reconnect: () => void
 }
 
 const AirmicContext = createContext<AirmicStore | null>(null)
@@ -217,8 +251,23 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const persisted = useRef(loadPersisted()).current
   const transport = useRef<AirMicTransport>(createTransport()).current
 
-  const [paired, setPaired] = useState(false)
-  const [pairedDevice, setPairedDevice] = useState<Device | null>(null)
+  // 有 token 就先当作已配对：启动直接进麦克风页，连上之后再确认，
+  // 避免「回到 App 先看到设备页、还要重新扫描」
+  const [paired, setPaired] = useState<boolean>(() => !!persisted.token)
+  const [pairedDevice, setPairedDevice] = useState<Device | null>(() =>
+    persisted.token
+      ? {
+          id: persisted.deviceId ?? 'saved',
+          name: persisted.deviceName ?? '电脑',
+          model: '',
+          signal: 4,
+          paired: true,
+          lastSeen: Date.now(),
+        }
+      : null,
+  )
+  /** 真正的连接状态（paired 只是「配对过」） */
+  const [connected, setConnected] = useState(false)
   const [knownDevices, setKnownDevices] = useState<Device[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [scanning, setScanning] = useState(false)
@@ -254,6 +303,14 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [pairingDevice, setPairingDevice] = useState<Device | null>(null)
   /** 真实麦克风电平（0–1）—— 电平表用这个，不再是假数据 */
   const [micLevel, setMicLevel] = useState(0)
+  /** 静默自动关麦（秒，0 = 关） */
+  const [silenceSeconds, setSilenceSecondsState] = useState<number>(
+    persisted.silenceSeconds ?? 10,
+  )
+  /** 静默自动关麦的提示 */
+  const [micAutoStopNotice, setMicAutoStopNotice] = useState<string | null>(null)
+  /** 磁片组（组内磁片按顺序执行） */
+  const [groups, setGroups] = useState<MagnetGroup[]>(persisted.groups ?? [])
   /** 外观模式 */
   const [themeMode, setThemeModeState] = useState<ThemeMode>(persisted.theme ?? 'system')
   /** 系统栏高度（页面铺满全屏，自己留边距） */
@@ -278,6 +335,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         deviceHost: persisted.deviceHost,
         devicePort: persisted.devicePort,
         theme: themeMode,
+        silenceSeconds,
+        groups,
         ...patch,
       }
       try {
@@ -286,7 +345,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         /* 存不下就算了，不影响本次会话 */
       }
     },
-    [appList, magnets, persisted, presets, themeMode],
+    [appList, groups, magnets, persisted, presets, silenceSeconds, themeMode],
   )
 
   const send = useCallback(
@@ -303,6 +362,44 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     },
     [send],
   )
+
+  /** 最后一次检测到有效声音的时间（静默检测用） */
+  const lastLoudAtRef = useRef(Date.now())
+
+  /** 主动重连（回到前台、连接断开时用） */
+  const reconnect = useCallback(() => {
+    if (!persisted.token || !persisted.deviceHost) return
+    setConnectionError(null)
+    void transport
+      .connect({
+        deviceId: persisted.deviceId ?? 'saved',
+        host: persisted.deviceHost,
+        port: persisted.devicePort ?? 47471,
+        token: persisted.token,
+      })
+      .catch((error: Error) => {
+        setConnectionError(error.message || '连不上电脑，确认电脑端还在运行')
+      })
+  }, [persisted, transport])
+
+  /** 回到前台时自动补一次连接 */
+  useEffect(() => {
+    transport.onAppStateChange((active) => {
+      if (!active) return
+      if (persisted.token && !connected) reconnect()
+    })
+  }, [connected, persisted.token, reconnect, transport])
+
+  const setSilenceSeconds = useCallback(
+    (seconds: number) => {
+      const value = Math.max(0, Math.min(600, seconds))
+      setSilenceSecondsState(value)
+      persist({ silenceSeconds: value })
+    },
+    [persist],
+  )
+
+  const dismissMicAutoStop = useCallback(() => setMicAutoStopNotice(null), [])
 
   /* ---------- 启动时自动连上上次的电脑 ---------- */
   //
@@ -392,6 +489,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         case 'welcome': {
           const required = message.pairingRequired === true
           setPaired(!required)
+          if (!required) setConnected(true)
           // 需要配对、而且是用户刚点了这台设备 → 这时候才发配对请求
           if (required && pairingDevice) {
             setPairingRequest({
@@ -496,11 +594,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
     transport.onLevel((level) => {
       setMicLevel(level)
+      if (level > 0.02) lastLoudAtRef.current = Date.now()
     })
 
     transport.onConnection((state) => {
-      if (!state.connected && state.error) {
-        setConnectionError(state.error)
+      setConnected(state.connected)
+      if (!state.connected) {
+        if (state.error) setConnectionError(state.error)
       }
     })
   }, [
@@ -699,7 +799,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   }, [serverRunning])
 
   /**
-   * 当前预案里麦克风按钮绑定的磁铁
+   * 当前预案里麦克风按钮绑定的磁片
    *
    * ⚠️ 这是「麦克风按钮自己的绑定」，和底部独立磁贴是两件事。
    */
@@ -735,13 +835,14 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (micMode === 'ptt') return
     if (micMode === 'continuous') {
       stopCapture()
-      // 关闭麦克风 → 触发「松开」磁铁
+      // 关闭麦克风 → 触发「松开」磁片
       fireTap(presetMagnet('release'))
       setMicMode('idle')
       return
     }
     warnIfServerIdle()
-    // 打开麦克风 → 触发「按下」磁铁
+    lastLoudAtRef.current = Date.now()
+    // 打开麦克风 → 触发「按下」磁片
     fireTap(presetMagnet('press'))
     void beginCapture('continuous')
     setMicMode('continuous')
@@ -751,7 +852,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (micMode === 'ptt') return
     warnIfServerIdle()
     // 长按语义：按下组合键但**不松开**，等手指抬起来才还原
-    // 用的是「长按」自己绑定的磁铁，与「按下 / 松开」互相独立
+    // 用的是「长按」自己绑定的磁片，与「按下 / 松开」互相独立
     const magnet = presetMagnet('hold')
     if (magnet) {
       const combo = magnetCombo(magnet)
@@ -776,6 +877,19 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       stopCapture()
     }
   }, [micMode, send, stopCapture])
+
+  /** 静默自动关麦 */
+  useEffect(() => {
+    if (micMode !== 'continuous' || silenceSeconds <= 0) return
+    const timer = window.setInterval(() => {
+      if (Date.now() - lastLoudAtRef.current >= silenceSeconds * 1000) {
+        toggleContinuous()
+        setMicAutoStopNotice(`静默 ${silenceSeconds} 秒，已自动关闭麦克风`)
+      }
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [micMode, silenceSeconds, toggleContinuous])
+
 
   const dismissMicBlocked = useCallback(() => setMicBlockedNotice(null), [])
   const dismissRemoteError = useCallback(() => setRemoteError(null), [])
@@ -878,7 +992,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     [magnets, persist, presets, pushConfig],
   )
 
-  /* ---------- 磁铁管理 ---------- */
+  /* ---------- 磁片管理 ---------- */
   const addMagnet = useCallback(
     (magnet: Omit<HotkeyMagnet, 'id'>) => {
       const id = `m-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`
@@ -901,7 +1015,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     [magnets, persist, presets, pushConfig],
   )
 
-  /** 删磁铁要把所有预案里的引用一起清掉 */
+  /** 删磁片要把所有预案里的引用一起清掉 */
   const deleteMagnet = useCallback(
     (id: string) => {
       const nextMagnets = magnets.filter((m) => m.id !== id)
@@ -911,12 +1025,111 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         micReleaseId: p.micReleaseId === id ? null : p.micReleaseId,
         tiles: p.tiles.filter((t) => t.magnetId !== id),
       }))
+      const nextGroups = groups.map((g) => ({
+        ...g,
+        steps: g.steps.filter((step) => step !== id),
+      }))
       setMagnets(nextMagnets)
       setPresets(nextPresets)
-      persist({ magnets: nextMagnets, presets: nextPresets })
+      setGroups(nextGroups)
+      persist({ magnets: nextMagnets, presets: nextPresets, groups: nextGroups })
       pushConfig(nextMagnets, nextPresets)
     },
-    [magnets, persist, presets, pushConfig],
+    [groups, magnets, persist, presets, pushConfig],
+  )
+
+  /* ---------- 磁片组 ---------- */
+
+  const [runningGroupId, setRunningGroupId] = useState<string | null>(null)
+  const groupTimers = useRef<number[]>([])
+
+  const addGroup = useCallback(
+    (name: string) => {
+      const id = `g-${Date.now().toString(36)}`
+      const next = [
+        ...groups,
+        {
+          id,
+          name: name.trim() || '新磁片组',
+          icon: 'Layers',
+          steps: [],
+          intervalSeconds: 1,
+        },
+      ]
+      setGroups(next)
+      persist({ groups: next })
+      return id
+    },
+    [groups, persist],
+  )
+
+  const updateGroup = useCallback(
+    (id: string, patch: Partial<MagnetGroup>) => {
+      const next = groups.map((g) => (g.id === id ? { ...g, ...patch } : g))
+      setGroups(next)
+      persist({ groups: next })
+    },
+    [groups, persist],
+  )
+
+  const upsertGroup = useCallback(
+    (group: MagnetGroup) => {
+      const exists = groups.some((g) => g.id === group.id)
+      const next = exists
+        ? groups.map((g) => (g.id === group.id ? group : g))
+        : [...groups, group]
+      setGroups(next)
+      persist({ groups: next })
+    },
+    [groups, persist],
+  )
+
+  const deleteGroup = useCallback(
+    (id: string) => {
+      const nextGroups = groups.filter((g) => g.id !== id)
+      // 预案里引用这个组的磁贴一起删掉
+      const nextPresets = presets.map((p) => ({
+        ...p,
+        tiles: p.tiles.filter((t) => t.groupId !== id),
+      }))
+      setGroups(nextGroups)
+      setPresets(nextPresets)
+      persist({ groups: nextGroups, presets: nextPresets })
+      pushConfig(magnets, nextPresets)
+    },
+    [groups, magnets, persist, presets, pushConfig],
+  )
+
+  const runGroup = useCallback(
+    (group: MagnetGroup) => {
+      groupTimers.current.forEach((timer) => window.clearTimeout(timer))
+      groupTimers.current = []
+
+      let delay = 0
+      for (const magnetId of group.steps) {
+        const magnet = magnets.find((m) => m.id === magnetId)
+        if (!magnet) continue
+        const combo = magnetCombo(magnet)
+        if (combo.length === 0) continue
+        groupTimers.current.push(
+          window.setTimeout(() => {
+            send({ type: 'hotkey.execute', combo })
+          }, delay),
+        )
+        delay += Math.max(0, group.intervalSeconds) * 1000
+      }
+
+      if (groupTimers.current.length > 0) {
+        setRunningGroupId(group.id)
+        groupTimers.current.push(
+          window.setTimeout(() => {
+            setRunningGroupId(null)
+            groupTimers.current = []
+          }, delay + 300),
+        )
+      }
+    },
+    [magnets, send],
   )
 
   const store = useMemo<AirmicStore>(
@@ -944,6 +1157,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       currentApp,
       remoteError,
       micLevel,
+      connected,
+      silenceSeconds,
+      micAutoStopNotice,
       themeMode,
       insets,
       connectionError,
@@ -969,6 +1185,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       addMagnet,
       updateMagnet,
       deleteMagnet,
+      groups,
+      addGroup,
+      updateGroup,
+      upsertGroup,
+      deleteGroup,
+      runGroup,
+      runningGroupId,
       dismissMicBlocked,
       fireMagnet,
       holdTileMagnet,
@@ -977,6 +1200,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       fetchAppList,
       fetchCurrentApp,
       setThemeMode,
+      setSilenceSeconds,
+      dismissMicAutoStop,
+      reconnect,
     }),
     [
       paired,
@@ -1002,6 +1228,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       currentApp,
       remoteError,
       micLevel,
+      connected,
+      silenceSeconds,
+      micAutoStopNotice,
       themeMode,
       insets,
       connectionError,
@@ -1027,6 +1256,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       addMagnet,
       updateMagnet,
       deleteMagnet,
+      groups,
+      addGroup,
+      updateGroup,
+      upsertGroup,
+      deleteGroup,
+      runGroup,
+      runningGroupId,
       dismissMicBlocked,
       fireMagnet,
       holdTileMagnet,
@@ -1035,6 +1271,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       fetchAppList,
       fetchCurrentApp,
       setThemeMode,
+      setSilenceSeconds,
+      dismissMicAutoStop,
+      reconnect,
     ],
   )
 

@@ -2,7 +2,7 @@
  * AirMic 手机端数据模型
  * ------------------------------------------------------------
  * 字段与电脑端（Swift）一一对应，见 shared/protocol.md。
- * 「磁铁」是可复用的快捷键定义（图标 + 名字 + 按键组合），
+ * 「磁片」是可复用的快捷键定义（图标 + 名字 + 按键组合），
  * 预案的磁贴和麦克风按钮的按下/松开都引用它。
  */
 import type { HotkeyMagnet } from './hotkey'
@@ -11,16 +11,30 @@ export type { HotkeyMagnet }
 
 export type MicState = 'idle' | 'continuous' | 'ptt' | 'muted'
 
-/** 一个快捷键磁贴 = 对某个磁铁的引用 */
+/** 一个快捷键磁贴 = 对某个磁片的引用 */
 export type Tile = {
   id: string
-  /** 引用的磁铁 id */
-  magnetId: string
+  /** 引用的磁片 id（和 groupId 二选一） */
+  magnetId?: string
+  /** 引用的磁片组 id（和 magnetId 二选一） */
+  groupId?: string
+}
+
+/** 磁片组：按顺序依次执行的一组磁片 */
+export type MagnetGroup = {
+  id: string
+  name: string
+  /** 图标（lucide 名） */
+  icon: string
+  /** 按顺序执行的磁片 id */
+  steps: string[]
+  /** 每步之间间隔多少秒 */
+  intervalSeconds: number
 }
 
 /**
  * 预案 = 一整套快捷键方案
- * ⚠️ micPressId / micReleaseId 是「麦克风按钮按下/松开时执行的磁铁」，
+ * ⚠️ micPressId / micReleaseId 是「麦克风按钮按下/松开时执行的磁片」，
  * tiles 是**独立**的快捷键磁贴 —— 这是两件不同的事。
  */
 export type Preset = {
@@ -32,11 +46,11 @@ export type Preset = {
   appId?: string | null
   /** 绑定的应用 id 列表 —— 一个预案可以绑多个应用 */
   appIds?: string[]
-  /** 麦克风按钮「按下」时执行的磁铁 id */
+  /** 麦克风按钮「按下」时执行的磁片 id */
   micPressId: string | null
-  /** 麦克风按钮「松开」时执行的磁铁 id（点按关闭时） */
+  /** 麦克风按钮「松开」时执行的磁片 id（点按关闭时） */
   micReleaseId: string | null
-  /** 长按说话时执行的磁铁 id（按下保持、松手释放，与上面两个独立） */
+  /** 长按说话时执行的磁片 id（按下保持、松手释放，与上面两个独立） */
   micHoldId?: string | null
   /** 独立快捷键磁贴（0–6 个） */
   tiles: Tile[]
@@ -102,7 +116,7 @@ export const EMPTY_STATS: Stats = {
 }
 
 /**
- * 初始磁铁库与默认预案
+ * 初始磁片库与默认预案
  * ------------------------------------------------------------
  * 这是**用户配置的种子**，不是假的运行时数据：用户在手机端可以随便改，
  * 改完会同步到电脑端。电脑端也会保留自己那份。
@@ -131,7 +145,7 @@ export const SEED_MAGNETS: HotkeyMagnet[] = [
  * 默认预案
  *
  * ⚠️ 麦克风按钮的「按下 / 松开」**默认不绑任何按键**（用户明确要求）。
- * 用户想用的话自己去预案编辑里挑磁铁。
+ * 用户想用的话自己去预案编辑里挑磁片。
  */
 export const SEED_PRESETS: Preset[] = [
   {

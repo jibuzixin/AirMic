@@ -4,6 +4,7 @@ import { createElement } from 'react'
 import { Plus, Trash2, X } from 'lucide-react'
 import type { Preset } from '@/lib/airmic-data'
 import { useAirmic } from '@/lib/airmic-store'
+import { useBackHandler } from '@/lib/back-stack'
 import { fadeFast, layoutSpring, springSmooth } from '@/lib/motion'
 import {
   magnetHasKey,
@@ -19,11 +20,11 @@ import { MagnetPicker } from './MagnetPicker'
  * 预案编辑抽屉
  * ------------------------------------------------------------
  * 需求说明书 §4.1 强调的一点，这里必须表达清楚：
- *   ① 麦克风按钮「按下」「松开」各执行一个**磁铁**
+ *   ① 麦克风按钮「按下」「松开」各执行一个**磁片**
  *   ② 独立快捷键磁贴（不与麦克风绑定）
  *   两者是**两处不同的绑定**，UI 上分成两个独立区块，不能混为一谈。
  *
- * 磁铁是全局的：图标 + 名字 + 按键组合，磁贴和麦克风按钮共用同一批。
+ * 磁片是全局的：图标 + 名字 + 按键组合，磁贴和麦克风按钮共用同一批。
  *
  * ⚠️ 抽屉拿到的必须是 store 里的**实时对象** ——
  *   存对象快照的话，这里改 store、界面显示旧快照 —— 点了没反应。
@@ -44,8 +45,11 @@ export function PresetEditor({
   preset: Preset
   onClose: () => void
 }) {
+  useBackHandler(onClose)
+
   const {
     magnets,
+    groups,
     appList,
     currentApp,
     fetchAppList,
@@ -57,9 +61,9 @@ export function PresetEditor({
     deleteMagnet,
   } = useAirmic()
 
-  /** 正在挑磁铁 */
+  /** 正在挑磁片 */
   const [picker, setPicker] = useState<PickerTarget | null>(null)
-  /** 正在新建 / 编辑磁铁；applyTo = 保存后应用到哪个位置 */
+  /** 正在新建 / 编辑磁片；applyTo = 保存后应用到哪个位置 */
   const [magnetDraft, setMagnetDraft] = useState<{
     magnet: HotkeyMagnet | null
     applyTo: PickerTarget | null
@@ -68,7 +72,7 @@ export function PresetEditor({
   const magnetOf = (id: string | null) =>
     id ? (magnets.find((m) => m.id === id) ?? null) : null
 
-  /** 把一个磁铁绑定到目标位置 */
+  /** 把一个磁片绑定到目标位置 */
   const applyMagnet = (target: PickerTarget, magnetId: string | null) => {
     if (target.kind === 'micPress') {
       updatePreset(preset.id, { micPressId: magnetId })
@@ -79,7 +83,9 @@ export function PresetEditor({
     } else if (target.kind === 'tile') {
       updatePreset(preset.id, {
         tiles: preset.tiles.map((t) =>
-          t.id === target.tileId ? { ...t, magnetId: magnetId ?? '' } : t,
+          t.id === target.tileId
+            ? { ...t, magnetId: magnetId ?? undefined, groupId: undefined }
+            : t,
         ),
       })
     } else if (target.kind === 'addTile' && magnetId) {
@@ -93,7 +99,28 @@ export function PresetEditor({
     setPicker(null)
   }
 
-  /** 保存磁铁 */
+  /** 把磁片组绑到磁贴位置 */
+  const applyGroup = (target: PickerTarget, groupId: string) => {
+    if (target.kind === 'tile') {
+      updatePreset(preset.id, {
+        tiles: preset.tiles.map((t) =>
+          t.id === target.tileId
+            ? { ...t, groupId, magnetId: undefined }
+            : t,
+        ),
+      })
+    } else if (target.kind === 'addTile') {
+      updatePreset(preset.id, {
+        tiles: [
+          ...preset.tiles,
+          { id: `t-${Date.now().toString(36)}`, groupId },
+        ],
+      })
+    }
+    setPicker(null)
+  }
+
+  /** 保存磁片 */
   const saveMagnet = (draft: Omit<HotkeyMagnet, 'id'>) => {
     if (magnetDraft?.magnet) {
       updateMagnet(magnetDraft.magnet.id, draft)
@@ -102,7 +129,7 @@ export function PresetEditor({
     }
     const id = addMagnet(draft)
     setMagnetDraft(null)
-    // 新建的磁铁直接应用到发起它的地方
+    // 新建的磁片直接应用到发起它的地方
     if (magnetDraft?.applyTo) applyMagnet(magnetDraft.applyTo, id)
   }
 
@@ -119,7 +146,7 @@ export function PresetEditor({
 
   return (
     /*
-     * 抽屉和磁铁选择器 / 磁铁编辑器是同一套交互：
+     * 抽屉和磁片选择器 / 磁片编辑器是同一套交互：
      *   1. 从**下往上**滑出（spring，只动 transform）
      *   2. 后面一层半透明遮罩，点空白处退出
      * 之前这个抽屉是直接渲染的、没有遮罩也没有动画，
@@ -312,28 +339,38 @@ export function PresetEditor({
             ) : (
               <ul className="flex flex-col gap-1.5">
                 {preset.tiles.map((tile) => {
-                  const magnet = magnetOf(tile.magnetId)
+                  const magnet = magnetOf(tile.magnetId ?? null)
+                  const group = tile.groupId
+                    ? (groups.find((g) => g.id === tile.groupId) ?? null)
+                    : null
+                  const iconName = group ? group.icon : magnet?.icon
+                  const title = group ? group.name : (magnet?.label ?? '（磁片已删除）')
+                  const subtitle = group
+                    ? `${group.steps.length} 步 · 间隔 ${group.intervalSeconds}s`
+                    : magnet && magnetHasKey(magnet)
+                      ? magnetKeys(magnet)
+                      : '未设置'
                   return (
                     <li
                       key={tile.id}
                       className="flex items-center gap-2 rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2"
                     >
-                      {magnet &&
-                        createElement(tileIcon(magnet.icon), {
+                      {iconName &&
+                        createElement(tileIcon(iconName), {
                           size: 14,
                           strokeWidth: 1.8,
                           className: 'shrink-0 text-text-secondary',
                         })}
                       <span className="min-w-0 flex-1 truncate text-[12px] text-text-primary">
-                        {magnet?.label ?? '（磁铁已删除）'}
+                        {title}
                       </span>
                       <button
                         type="button"
                         onClick={() => setPicker({ kind: 'tile', tileId: tile.id })}
-                        aria-label={`更换磁贴「${magnet?.label ?? ''}」的快捷键`}
+                        aria-label={`更换磁贴「${title}」`}
                         className="tabular shrink-0 rounded-full px-2 py-1 text-[10px] transition-colors"
                         style={
-                          magnet && magnetHasKey(magnet)
+                          group || (magnet && magnetHasKey(magnet))
                             ? {
                                 background: 'var(--color-surface-3)',
                                 color: 'var(--color-text-secondary)',
@@ -341,9 +378,7 @@ export function PresetEditor({
                             : { color: 'var(--color-text-faint)' }
                         }
                       >
-                        {magnet && magnetHasKey(magnet)
-                          ? magnetKeys(magnet)
-                          : '未设置'}
+                        {subtitle}
                       </button>
                       <button
                         type="button"
@@ -352,7 +387,7 @@ export function PresetEditor({
                             tiles: preset.tiles.filter((t) => t.id !== tile.id),
                           })
                         }
-                        aria-label={`移除磁贴「${magnet?.label ?? ''}」`}
+                        aria-label={`移除磁贴「${title}」`}
                         className="grid size-8 shrink-0 place-items-center rounded-[10px] text-text-tertiary transition-colors hover:bg-surface-3 hover:text-text-primary"
                       >
                         <Trash2 size={13} strokeWidth={1.8} />
@@ -402,7 +437,9 @@ export function PresetEditor({
             <MagnetPicker
               key="magnet-picker"
               magnets={magnets}
+              groups={groups}
               onPick={(id) => applyMagnet(picker, id)}
+              onPickGroup={(id) => applyGroup(picker, id)}
               onCreate={() => {
                 setMagnetDraft({ magnet: null, applyTo: picker })
                 setPicker(null)
@@ -480,7 +517,7 @@ function AppChip({
 }
 
 /**
- * 一个磁铁槽位 —— 显示当前绑的磁铁，点一下去换
+ * 一个磁片槽位 —— 显示当前绑的磁片，点一下去换
  * 这是「麦克风按钮的绑定」和「独立磁贴」的公共零件。
  */
 function MagnetSlot({
@@ -497,7 +534,7 @@ function MagnetSlot({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`选择${label}的磁铁，当前 ${
+      aria-label={`选择${label}的磁片，当前 ${
         magnet ? magnet.label : '不绑定'
       }`}
       className="flex min-h-[44px] w-full items-center gap-2 rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2 text-left transition-colors hover:bg-surface-3"

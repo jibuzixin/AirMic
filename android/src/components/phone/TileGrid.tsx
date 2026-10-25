@@ -4,23 +4,31 @@ import { Check } from 'lucide-react'
 import { fadeFast, springSnappy } from '@/lib/motion'
 import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
 import { tileIcon } from './icons'
+import type { MagnetGroup } from '@/lib/airmic-data'
+
+/** 磁贴格子里的一项：磁片，或者磁片组 */
+export type TileEntry =
+  | { key: string; kind: 'magnet'; magnet: HotkeyMagnet }
+  | { key: string; kind: 'group'; group: MagnetGroup }
 
 /**
  * 遥控磁贴
  * ------------------------------------------------------------
  * 需求说明书 §3.3 / DESIGN.md §7.3：
  *   磁贴**只对应电脑快捷键**，三行固定结构 = 图标 / 名称 / 组合键。
- *   磁贴引用「磁铁」（图标 + 名字 + 一组按键），磁铁没配键时显示暗态，
+ *   磁贴引用「磁片」（图标 + 名字 + 一组按键），磁片没配键时显示暗态，
  *   点击提示「先设置」。固定 3 列 × 2 行，不滚动。
  */
 export function TileGrid({
-  magnets,
+  items,
   onFire,
   onUnbound,
   onHoldStart,
   onHoldEnd,
+  onRunGroup,
+  runningGroupId,
 }: {
-  magnets: HotkeyMagnet[]
+  items: TileEntry[]
   /** 点按：按下 + 立即抬起 */
   onFire: (magnet: HotkeyMagnet) => void
   onUnbound: (magnet: HotkeyMagnet) => void
@@ -28,35 +36,87 @@ export function TileGrid({
   onHoldStart: (magnet: HotkeyMagnet) => void
   /** 长按松手：松开组合键 */
   onHoldEnd: () => void
+  /** 点磁片组：按顺序依次执行 */
+  onRunGroup: (group: MagnetGroup) => void
+  /** 正在执行的磁片组 id */
+  runningGroupId: string | null
 }) {
-  // ⚠️ 固定 3×2 六个格子 —— 磁铁不够时用空位占住，
+  // ⚠️ 固定 3×2 六个格子 —— 磁片不够时用空位占住，
   // 否则磁贴数量一变，下面的麦克风按钮就会被挤得上下跳。
-  const slots: (HotkeyMagnet | null)[] = Array.from(
+  const slots: (TileEntry | null)[] = Array.from(
     { length: 6 },
-    (_, index) => magnets[index] ?? null,
+    (_, index) => items[index] ?? null,
   )
 
   return (
     <div className="grid grid-cols-3 gap-2">
-      {slots.map((magnet, index) =>
-        magnet ? (
+      {slots.map((entry, index) =>
+        !entry ? (
+          <div
+            key={`slot-${index}`}
+            aria-hidden
+            className="h-[84px] rounded-xl border border-transparent"
+          />
+        ) : entry.kind === 'magnet' ? (
           <TileButton
-            key={magnet.id}
-            magnet={magnet}
+            key={entry.key}
+            magnet={entry.magnet}
             onFire={onFire}
             onUnbound={onUnbound}
             onHoldStart={onHoldStart}
             onHoldEnd={onHoldEnd}
           />
         ) : (
-          <div
-            key={`slot-${index}`}
-            aria-hidden
-            className="h-[84px] rounded-xl border border-transparent"
+          <GroupButton
+            key={entry.key}
+            group={entry.group}
+            running={runningGroupId === entry.group.id}
+            onRun={onRunGroup}
           />
         ),
       )}
     </div>
+  )
+}
+
+/** 磁片组按钮：点一下依次执行组里的磁片 */
+function GroupButton({
+  group,
+  running,
+  onRun,
+}: {
+  group: MagnetGroup
+  running: boolean
+  onRun: (group: MagnetGroup) => void
+}) {
+  return (
+    <motion.button
+      type="button"
+      onClick={() => onRun(group)}
+      whileTap={{ scale: 0.96 }}
+      transition={springSnappy}
+      aria-label={`${group.name}，${group.steps.length} 步`}
+      className={[
+        'relative flex h-[84px] flex-col items-center justify-center gap-1 rounded-xl border bg-surface-1 px-1',
+        running ? 'border-[var(--color-amber-accent)]' : 'border-border-subtle',
+      ].join(' ')}
+    >
+      {createElement(tileIcon(group.icon), {
+        size: 19,
+        strokeWidth: 1.7,
+        style: {
+          color: running
+            ? 'var(--color-amber-accent)'
+            : 'var(--color-text-secondary)',
+        },
+      })}
+      <span className="max-w-full truncate text-[11px] leading-tight text-text-primary">
+        {group.name}
+      </span>
+      <span className="tabular text-[10px] leading-tight text-text-tertiary">
+        {group.steps.length} 步
+      </span>
+    </motion.button>
   )
 }
 

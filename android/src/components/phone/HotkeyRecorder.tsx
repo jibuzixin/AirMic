@@ -258,7 +258,7 @@ function KeyButton({
   )
 }
 
-/** 从磁铁取出录制器的初始状态 */
+/** 从磁片取出录制器的初始状态 */
 export function recorderState(magnet: HotkeyMagnet | null): {
   modifiers: ModifierKey[]
   mainKey: string | null

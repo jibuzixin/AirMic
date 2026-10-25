@@ -45,6 +45,8 @@ export function MicPage({
     micBlockedNotice,
     dismissMicBlocked,
     fireMagnet,
+    holdTileMagnet,
+    releaseTileMagnet,
     remoteError,
     dismissRemoteError,
     micLevel,
@@ -177,6 +179,18 @@ export function MicPage({
     },
     [fireMagnet, showToast],
   )
+
+  const handleHoldStart = useCallback(
+    (magnet: HotkeyMagnet) => {
+      holdTileMagnet(magnet)
+      showToast(`按住中 · ${magnetKeys(magnet)}（松手松开）`)
+    },
+    [holdTileMagnet, showToast],
+  )
+
+  const handleHoldEnd = useCallback(() => {
+    releaseTileMagnet()
+  }, [releaseTileMagnet])
 
   const handleUnbound = useCallback(
     (magnet: HotkeyMagnet) => {
@@ -342,6 +356,8 @@ export function MicPage({
           magnets={tileMagnets}
           onFire={handleFire}
           onUnbound={handleUnbound}
+          onHoldStart={handleHoldStart}
+          onHoldEnd={handleHoldEnd}
         />
       </div>
 
@@ -353,7 +369,7 @@ export function MicPage({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 6 }}
             transition={{ opacity: fadeFast, default: springSmooth }}
-            className="pointer-events-none absolute inset-x-0 bottom-28 z-20 flex justify-center px-8"
+            className="pointer-events-none absolute inset-x-0 top-20 z-20 flex justify-center px-8"
           >
             <span className="rounded-full border border-border-subtle bg-surface-2 px-3 py-1.5 text-[11px] text-text-secondary">
               {toast}

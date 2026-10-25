@@ -108,6 +108,8 @@ public final class AudioReceiver {
     /// 复位解码器（手机停止收音后重新开始时调用）
     public func resetDecoder() {
         decoder.reset()
+        // 新一段音频从 0 增益淡入，避免编码器 priming 的爆音
+        writer.beginFadeIn()
         Log.info("解码器已复位（等待新一段音频）")
     }
 

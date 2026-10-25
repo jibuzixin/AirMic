@@ -20,6 +20,14 @@ public final class VirtualAudioWriter {
     private var testToneEnabled = false
     private var testTonePhase: Double = 0
 
+    /// 重新淡入（每段新音频开始时调用）
+    ///
+    /// 长按说话时，上一段刚结束、写入端可能还没来得及欠载，
+    /// 光靠「欠载归零」不够 —— 由解码端在复位时显式触发。
+    public func beginFadeIn() {
+        fadeGain = 0
+    }
+
     /// 开关 1kHz 测试音
     public func setTestTone(_ enabled: Bool) {
         testToneEnabled = enabled

@@ -196,8 +196,12 @@ export type AirmicStore = {
   dismissMicBlocked: () => void
 
   /* --- 快捷键 --- */
-  /** 点磁贴：让电脑执行这个磁铁的组合键 */
+  /** 点磁贴：让电脑执行这个磁铁的组合键（按下+抬起） */
   fireMagnet: (magnet: HotkeyMagnet) => void
+  /** 长按磁贴：按下组合键并保持 */
+  holdTileMagnet: (magnet: HotkeyMagnet) => void
+  /** 长按磁贴松手：松开组合键 */
+  releaseTileMagnet: () => void
   dismissRemoteError: () => void
 
   /* --- 预案绑定的应用 --- */
@@ -392,6 +396,20 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         case 'welcome': {
           const required = message.pairingRequired === true
           setPaired(!required)
+          // 需要配对、而且是用户刚点了这台设备 → 这时候才发配对请求
+          if (required && pairingDevice) {
+            setPairingRequest({
+              deviceId: pairingDevice.id,
+              deviceName: pairingDevice.name,
+              model: pairingDevice.model,
+            })
+            send({
+              type: 'pair.request',
+              deviceId: deviceInfo.deviceId,
+              deviceName: deviceInfo.deviceName || pairingDevice.name,
+              model: deviceInfo.deviceName,
+            })
+          }
           if (!required) {
             setConnectionError(null)
             // 顶部要显示「已连接 · 设备名」—— 自动重连时也要补上
@@ -507,6 +525,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     persist,
     persisted.deviceId,
     persisted.deviceName,
+    persisted.token,
     transport,
   ])
 
@@ -801,6 +820,27 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   /* ---------- 快捷键 ---------- */
 
+  /** 磁贴长按记住的组合键 */
+  const heldTileComboRef = useRef<string[] | null>(null)
+
+  /** 长按磁贴：按下组合键，等松手才抬起 */
+  const holdTileMagnet = useCallback(
+    (magnet: HotkeyMagnet) => {
+      const combo = magnetCombo(magnet)
+      if (combo.length === 0) return
+      heldTileComboRef.current = combo
+      send({ type: 'hotkey.down', combo })
+    },
+    [send],
+  )
+
+  const releaseTileMagnet = useCallback(() => {
+    const combo = heldTileComboRef.current
+    if (!combo) return
+    heldTileComboRef.current = null
+    send({ type: 'hotkey.up', combo })
+  }, [send])
+
   /** 点磁贴：把组合键发给电脑执行 */
   const fireMagnet = useCallback(
     (magnet: HotkeyMagnet) => {
@@ -972,6 +1012,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       deleteMagnet,
       dismissMicBlocked,
       fireMagnet,
+      holdTileMagnet,
+      releaseTileMagnet,
       dismissRemoteError,
       fetchAppList,
       fetchCurrentApp,
@@ -1031,6 +1073,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       deleteMagnet,
       dismissMicBlocked,
       fireMagnet,
+      holdTileMagnet,
+      releaseTileMagnet,
       dismissRemoteError,
       fetchAppList,
       fetchCurrentApp,

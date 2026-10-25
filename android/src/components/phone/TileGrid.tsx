@@ -17,10 +17,17 @@ export function TileGrid({
   magnets,
   onFire,
   onUnbound,
+  onHoldStart,
+  onHoldEnd,
 }: {
   magnets: HotkeyMagnet[]
+  /** 点按：按下 + 立即抬起 */
   onFire: (magnet: HotkeyMagnet) => void
   onUnbound: (magnet: HotkeyMagnet) => void
+  /** 长按：按下组合键并保持 */
+  onHoldStart: (magnet: HotkeyMagnet) => void
+  /** 长按松手：松开组合键 */
+  onHoldEnd: () => void
 }) {
   // ⚠️ 固定 3×2 六个格子 —— 磁铁不够时用空位占住，
   // 否则磁贴数量一变，下面的麦克风按钮就会被挤得上下跳。
@@ -38,6 +45,8 @@ export function TileGrid({
             magnet={magnet}
             onFire={onFire}
             onUnbound={onUnbound}
+            onHoldStart={onHoldStart}
+            onHoldEnd={onHoldEnd}
           />
         ) : (
           <div
@@ -55,32 +64,93 @@ function TileButton({
   magnet,
   onFire,
   onUnbound,
+  onHoldStart,
+  onHoldEnd,
 }: {
   magnet: HotkeyMagnet
   onFire: (magnet: HotkeyMagnet) => void
   onUnbound: (magnet: HotkeyMagnet) => void
+  onHoldStart: (magnet: HotkeyMagnet) => void
+  onHoldEnd: () => void
 }) {
   const bound = magnetHasKey(magnet)
   const keys = magnetKeys(magnet)
   const [sent, setSent] = useState(false)
+  const [holding, setHolding] = useState(false)
   const timerRef = useRef<number | null>(null)
+  const holdTimerRef = useRef<number | null>(null)
+  const holdingRef = useRef(false)
 
-  const handleClick = () => {
-    if (!bound) {
-      onUnbound(magnet)
-      return
+  const clearHoldTimer = () => {
+    if (holdTimerRef.current) {
+      window.clearTimeout(holdTimerRef.current)
+      holdTimerRef.current = null
     }
-    onFire(magnet)
+  }
+
+  const flashSent = () => {
     setSent(true)
     if (timerRef.current) window.clearTimeout(timerRef.current)
     timerRef.current = window.setTimeout(() => setSent(false), 700)
   }
 
+  const handlePointerDown = () => {
+    if (!bound) return
+    holdingRef.current = false
+    clearHoldTimer()
+    holdTimerRef.current = window.setTimeout(() => {
+      holdingRef.current = true
+      setHolding(true)
+      onHoldStart(magnet)
+    }, 320)
+  }
+
+  const handlePointerUp = () => {
+    clearHoldTimer()
+    if (holdingRef.current) {
+      holdingRef.current = false
+      setHolding(false)
+      onHoldEnd()
+      return
+    }
+    if (!bound) {
+      onUnbound(magnet)
+      return
+    }
+    onFire(magnet)
+    flashSent()
+  }
+
+  const handlePointerLeave = () => {
+    clearHoldTimer()
+    if (holdingRef.current) {
+      holdingRef.current = false
+      setHolding(false)
+      onHoldEnd()
+    }
+  }
+
+  const handleKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    if (!bound) {
+      onUnbound(magnet)
+      return
+    }
+    onFire(magnet)
+    flashSent()
+  }
+
   return (
     <motion.button
       type="button"
-      onClick={handleClick}
-      whileTap={{ scale: 0.96 }}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}
+      onPointerCancel={handlePointerUp}
+      onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={handleKeyDown}
+      animate={{ scale: holding ? 0.97 : 1 }}
       transition={springSnappy}
       aria-label={
         bound
@@ -92,6 +162,7 @@ function TileButton({
         bound
           ? 'border-border-subtle bg-surface-1'
           : 'border-border-subtle bg-surface-1 opacity-45',
+        holding ? 'border-[var(--color-amber-accent)]' : '',
       ].join(' ')}
     >
       {/* 三行结构：图标 / 名称 / 组合键 */}

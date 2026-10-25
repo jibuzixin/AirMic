@@ -70,6 +70,8 @@ public final class AirMicServer: ObservableObject {
     @Published public private(set) var lastError: String?
 
     public private(set) var connectedClient: ClientConnection?
+    /// 已经用 token 认证过的连接（这些连接再发配对请求就是多余的）
+    private var authenticatedClients = Set<String>()
 
     public let pairCode = PairingCode()
 
@@ -407,6 +409,9 @@ public final class AirMicServer: ObservableObject {
         client.send(welcome)
 
         if paired {
+            authenticatedClients.insert(client.id)
+            // 之前可能残留过这条设备的配对请求 —— 已经配对了就清掉
+            onMain { self.pendingRequests.removeAll { $0.deviceId == deviceId } }
             // 已配对设备：直接连上，不再请求同意（硬约束 14）
             var state = Message(type: Message.Kind.state)
             state.server = currentServerState()
@@ -423,6 +428,21 @@ public final class AirMicServer: ObservableObject {
 
     private func handlePairRequest(_ message: Message, client: ClientConnection) {
         let deviceId = message.deviceId ?? "unknown"
+
+        // 1) 这条连接已经用 token 认证过 —— 不该再来配对，直接忽略
+        if authenticatedClients.contains(client.id) {
+            Log.info("忽略已认证连接的配对请求：\(deviceId)")
+            return
+        }
+        // 2) 这台设备本来就在已配对列表里：直接回已有的 token，不打扰用户
+        if let existing = pairingStore.device(for: deviceId) {
+            var response = Message(type: Message.Kind.pairRespond)
+            response.approved = true
+            response.token = existing.token
+            client.send(response)
+            Log.info("设备已在配对列表里，直接放行：\(existing.displayName)")
+            return
+        }
         let info = PairingRequestInfo(
             deviceId: deviceId,
             deviceName: message.deviceName ?? "未知设备",

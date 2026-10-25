@@ -137,7 +137,9 @@ public class DeviceScanner {
                     device.put("name", name);
                     device.put("model", "macOS");
                     device.put("signal", 4);
-                    device.put("paired", false);
+                    // 本地有这个设备的 token 就说明之前配对过 ——
+                    // 否则手机上会把已配对设备当成新的，重新发配对请求。
+                    device.put("paired", TokenStore.get(context, id) != null);
                     device.put("lastSeen", System.currentTimeMillis());
                     device.put("host", address);
                     device.put("port", info.getPort());

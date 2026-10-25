@@ -53,7 +53,8 @@ export function DevicePage() {
 
   /** 已配对 → 直接连上；未配对 → 发配对请求 */
   const handleDevice = (device: Device) => {
-    if (knownDevices.some((d) => d.id === device.id)) {
+    // 扫描时已经按本地 token 标好了 paired；knownDevices 是本会话里记住的
+    if (device.paired || knownDevices.some((d) => d.id === device.id)) {
       connectTo(device.id)
       return
     }

@@ -395,6 +395,12 @@ public final class AirMicServer: ObservableObject {
         case Message.Kind.micStateReport:
             let mode = MicMode(rawValue: message.mode ?? "idle") ?? .idle
             Log.info("手机端麦克风状态：\(mode.rawValue)")
+            // 手机开始说话了：如果电脑端因为静默自动关掉了收音，这里自动恢复 ——
+            // 否则省电机制会变成「用户得手动再点一次开始收音」的负担。
+            if mode != .idle, !isRecording {
+                Log.info("手机端开始收音，自动恢复电脑端收音")
+                onMain { self.setRecording(true) }
+            }
             // 手机停止过后重新开始 → 编码器是新的，解码器也复位一下，
             // 否则可能卡在上一段的 EOF 上（「停了再说话就没声」）
             if phoneMicMode == .idle && mode != .idle {

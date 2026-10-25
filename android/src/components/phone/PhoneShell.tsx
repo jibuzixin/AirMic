@@ -5,6 +5,7 @@ import { useAirmic } from '@/lib/airmic-store'
 import { DevicePage } from './DevicePage'
 import { MicPage } from './MicPage'
 import { PresetPage } from './PresetPage'
+import { MagnetLibraryPage } from './MagnetLibraryPage'
 import { PresetEditor } from './PresetEditor'
 import { PhoneOverlayContext } from './PhoneOverlay'
 
@@ -28,7 +29,7 @@ export function PhoneShell({
   mode?: 'frame' | 'full'
 }) {
   const { paired, presets, activePresetId } = useAirmic()
-  const [page, setPage] = useState<'mic' | 'preset'>('mic')
+  const [page, setPage] = useState<'mic' | 'preset' | 'magnets'>('mic')
   /** 正在编辑的预案 id；null = 抽屉关闭 */
   const [editingId, setEditingId] = useState<string | null>(null)
   /** 二级弹层（磁铁选择器 / 磁铁编辑器）的挂载点 */
@@ -60,11 +61,14 @@ export function PhoneShell({
                   onOpenPresets={() => setPage('preset')}
                   onEditMicBindings={() => setEditingId(activePresetId)}
                 />
-              ) : (
+              ) : page === 'preset' ? (
                 <PresetPage
                   onBack={() => setPage('mic')}
                   onEditPreset={(id) => setEditingId(id)}
+                  onOpenMagnets={() => setPage('magnets')}
                 />
+              ) : (
+                <MagnetLibraryPage onBack={() => setPage('preset')} />
               )}
             </div>
 
@@ -118,11 +122,14 @@ export function PhoneShell({
               onOpenPresets={() => setPage('preset')}
               onEditMicBindings={() => setEditingId(activePresetId)}
             />
-          ) : (
+          ) : page === 'preset' ? (
             <PresetPage
               onBack={() => setPage('mic')}
               onEditPreset={(id) => setEditingId(id)}
+              onOpenMagnets={() => setPage('magnets')}
             />
+          ) : (
+            <MagnetLibraryPage onBack={() => setPage('preset')} />
           )}
         </div>
 

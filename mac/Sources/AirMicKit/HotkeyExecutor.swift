@@ -23,7 +23,18 @@ public final class HotkeyExecutor {
     }
 
     /// 长按语义：按下的组合键（等 release 时才松开）
-    private var held: (keyCode: CGKeyCode, flags: CGEventFlags)?
+    ///
+    /// 除了主键，**还必须真的按下 / 松开修饰键**：
+    /// 只给主键挂 flags，很多 App 收不到 flagsChanged，会觉得 ⌘⇧ 一直按着不放。
+    private var held: (keyCode: CGKeyCode, flags: CGEventFlags, modifiers: [String])?
+
+    /// 修饰键的虚拟键码（左侧）
+    private static let modifierKeyCodes: [String: CGKeyCode] = [
+        "ctrl": 59, "alt": 58, "shift": 56, "cmd": 55,
+    ]
+
+    /// 修饰键按下/抬起的固定顺序
+    private static let modifierOrder = ["ctrl", "alt", "shift", "cmd"]
 
     /// 按下组合键但不松开（长按说话用）
     @discardableResult
@@ -39,10 +50,28 @@ public final class HotkeyExecutor {
             return false
         }
 
+        let modifiers = Self.modifierOrder.filter { resolved.modifiers.contains($0) }
+        var flags: CGEventFlags = []
+        // 先逐个按下修饰键（每按一个，flags 累加）
+        for token in modifiers {
+            switch token {
+            case "cmd": flags.insert(.maskCommand)
+            case "shift": flags.insert(.maskShift)
+            case "ctrl": flags.insert(.maskControl)
+            case "alt": flags.insert(.maskAlternate)
+            default: continue
+            }
+            guard let code = Self.modifierKeyCodes[token] else { continue }
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: true)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
+        }
+        // 再按主键
         let down = CGEvent(keyboardEventSource: nil, virtualKey: resolved.keyCode, keyDown: true)
         down?.flags = resolved.flags
         down?.post(tap: .cghidEventTap)
-        held = (resolved.keyCode, resolved.flags)
+
+        held = (resolved.keyCode, resolved.flags, modifiers)
         Log.info("按下组合键：\(combo.joined(separator: "+"))")
         return true
     }
@@ -51,9 +80,28 @@ public final class HotkeyExecutor {
     @discardableResult
     public func release() -> Bool {
         guard let held else { return false }
+
+        // 先松开主键
         let up = CGEvent(keyboardEventSource: nil, virtualKey: held.keyCode, keyDown: false)
         up?.flags = held.flags
         up?.post(tap: .cghidEventTap)
+
+        // 再按相反顺序松开修饰键
+        var flags = held.flags
+        for token in held.modifiers.reversed() {
+            switch token {
+            case "cmd": flags.remove(.maskCommand)
+            case "shift": flags.remove(.maskShift)
+            case "ctrl": flags.remove(.maskControl)
+            case "alt": flags.remove(.maskAlternate)
+            default: continue
+            }
+            guard let code = Self.modifierKeyCodes[token] else { continue }
+            let event = CGEvent(keyboardEventSource: nil, virtualKey: code, keyDown: false)
+            event?.flags = flags
+            event?.post(tap: .cghidEventTap)
+        }
+
         self.held = nil
         Log.info("松开组合键")
         return true
@@ -77,21 +125,28 @@ public final class HotkeyExecutor {
     }
 
     /// 组合键 → 键码 + 修饰键标志
-    static func resolve(_ combo: [String]) -> (keyCode: CGKeyCode, flags: CGEventFlags)? {
+    static func resolve(
+        _ combo: [String]
+    ) -> (keyCode: CGKeyCode, flags: CGEventFlags, modifiers: [String])? {
         var flags: CGEventFlags = []
+        var modifiers: [String] = []
         var mainKey: String?
         for token in combo {
             switch token {
-            case "cmd": flags.insert(.maskCommand)
-            case "shift": flags.insert(.maskShift)
-            case "ctrl": flags.insert(.maskControl)
-            case "alt": flags.insert(.maskAlternate)
+            case "cmd":
+                flags.insert(.maskCommand); modifiers.append("cmd")
+            case "shift":
+                flags.insert(.maskShift); modifiers.append("shift")
+            case "ctrl":
+                flags.insert(.maskControl); modifiers.append("ctrl")
+            case "alt":
+                flags.insert(.maskAlternate); modifiers.append("alt")
             default:
                 if mainKey == nil { mainKey = token }
             }
         }
         guard let mainKey, let keyCode = keyCode(for: mainKey) else { return nil }
-        return (keyCode, flags)
+        return (keyCode, flags, modifiers)
     }
 
     /// 执行一组组合键，如 ["cmd", "shift", "v"]

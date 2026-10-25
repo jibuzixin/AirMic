@@ -784,14 +784,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   }, [beginCapture, micMode, presetMagnet, send, warnIfServerIdle])
 
   const endPushToTalk = useCallback(() => {
-    if (micMode !== 'ptt') return
-    // 松开手指 → 松开组合键
+    // ⚠️ 不管当前状态是不是 ptt，只要按下过组合键就必须松开 ——
+    // 否则电脑上的键会一直卡在「按住」状态（用户反馈的核心问题）。
     if (heldComboRef.current) {
       send({ type: 'hotkey.up', combo: heldComboRef.current })
       heldComboRef.current = null
     }
-    setMicMode('idle')
-    stopCapture()
+    if (micMode === 'ptt') {
+      setMicMode('idle')
+      stopCapture()
+    }
   }, [micMode, send, stopCapture])
 
   const dismissMicBlocked = useCallback(() => setMicBlockedNotice(null), [])

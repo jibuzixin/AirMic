@@ -56,8 +56,10 @@ public final class VirtualAudioWriter {
         peakAmplitude = 0
         underrunCount = 0
         hasReceivedAudio = false
+        fadeGain = 0
 
         streamFormat = Self.outputStreamFormat(for: deviceID)
+        fadeStep = 1.0 / (0.015 * max(streamFormat.mSampleRate, 8000))
         Log.info("虚拟设备格式：\(streamFormat.mSampleRate)Hz / \(streamFormat.mChannelsPerFrame)ch / \(streamFormat.mBitsPerChannel)bit")
 
         var newProcID: AudioDeviceIOProcID?
@@ -119,6 +121,11 @@ public final class VirtualAudioWriter {
     public private(set) var peakAmplitude: Double = 0
     /// 收到过音频没有 —— 没收到之前的「空回调」不算欠载
     private var hasReceivedAudio = false
+    /// 淡入增益：每次从静音/断流恢复时从 0 升到 1，
+    /// 避免「刚开始收音时噗的一声」（编码器 priming 的瞬态）
+    private var fadeGain: Double = 0
+    /// 每帧增益增量（约 15ms 淡入）
+    private var fadeStep: Double = 1.0 / (0.015 * 48000)
 
     /// 在 IO 回调里把环形缓冲里的 PCM 填进设备输出缓冲
     ///
@@ -143,9 +150,11 @@ public final class VirtualAudioWriter {
             for frame in 0..<frames {
                 let tone = sin(testTonePhase) * 0.25
                 renderedFrames += 1
-                if abs(tone) > peakAmplitude { peakAmplitude = abs(tone) }
+                let value = tone * fadeGain
+                fadeGain = min(1, fadeGain + fadeStep)
+                if abs(value) > peakAmplitude { peakAmplitude = abs(value) }
                 writeSample(
-                    tone,
+                    value,
                     frame: frame,
                     buffers: buffers,
                     channels: channels,
@@ -162,6 +171,8 @@ public final class VirtualAudioWriter {
         // 欠载：没有数据就补静音（收到过音频之后才算真欠载）
         guard let mono = buffer.read(frames: frames) else {
             if hasReceivedAudio { underrunCount += 1 }
+            // 断流了：下次有声音时重新淡入
+            fadeGain = 0
             for index in 0..<buffers.count {
                 if let data = buffers[index].mData {
                     memset(data, 0, Int(buffers[index].mDataByteSize))
@@ -171,7 +182,9 @@ public final class VirtualAudioWriter {
         }
 
         for frame in 0..<mono.count {
-            let sample = Double(mono[frame]) / 32768.0
+            let raw = Double(mono[frame]) / 32768.0
+            let sample = raw * fadeGain
+            fadeGain = min(1, fadeGain + fadeStep)
             renderedFrames += 1
             if abs(sample) > peakAmplitude { peakAmplitude = abs(sample) }
             writeSample(

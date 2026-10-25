@@ -64,7 +64,6 @@ export function PresetEditor({
     magnet: HotkeyMagnet | null
     applyTo: PickerTarget | null
   } | null>(null)
-  const [libraryOpen, setLibraryOpen] = useState(false)
 
   const magnetOf = (id: string | null) =>
     id ? (magnets.find((m) => m.id === id) ?? null) : null
@@ -111,6 +110,12 @@ export function PresetEditor({
   const releaseMagnet = magnetOf(preset.micReleaseId)
   const holdMagnet = magnetOf(preset.micHoldId ?? null)
   const boundAppIds = preset.appIds ?? []
+  /** appId → 显示名（bundle id 取最后一段兜底） */
+  const appNameFor = (id: string) =>
+    appList.find((app) => app.id === id)?.name ||
+    (currentApp?.id === id ? currentApp.name : '') ||
+    id.split('.').pop() ||
+    id
 
   return (
     /*
@@ -172,13 +177,50 @@ export function PresetEditor({
             title="绑定电脑应用"
             hint="可以绑多个应用；一个应用只会属于一套预案"
           >
-            <div className="flex flex-wrap gap-2">
-              <AppChip
-                label="不绑定"
-                active={boundAppIds.length === 0}
-                onClick={() => updatePreset(preset.id, { appIds: [] })}
-              />
-              {/* 应用列表来自电脑端（用户主动拉取，手机端本地缓存） */}
+            {/* 已绑定的应用：能看见、能删 */}
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex min-w-0 flex-1 flex-wrap gap-1.5">
+                {boundAppIds.length === 0 ? (
+                  <span className="text-[11px] text-text-tertiary">
+                    还没有绑定应用
+                  </span>
+                ) : (
+                  boundAppIds.map((id) => (
+                    <span
+                      key={id}
+                      className="flex items-center gap-1 rounded-full border border-border-strong bg-surface-3 py-1 pl-2.5 pr-1 text-[11px] text-text-primary"
+                    >
+                      {appNameFor(id)}
+                      <button
+                        type="button"
+                        aria-label={`取消绑定 ${appNameFor(id)}`}
+                        onClick={() =>
+                          updatePreset(preset.id, {
+                            appIds: boundAppIds.filter((item) => item !== id),
+                          })
+                        }
+                        className="grid size-5 place-items-center rounded-full text-text-tertiary transition-colors hover:bg-surface-2 hover:text-text-primary"
+                      >
+                        <X size={11} strokeWidth={2.2} />
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+              {boundAppIds.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => updatePreset(preset.id, { appIds: [] })}
+                  className="shrink-0 text-[11px] text-text-tertiary underline-offset-2 hover:text-text-secondary"
+                >
+                  清空
+                </button>
+              )}
+            </div>
+
+            {/* 可选的应用 */}
+            <p className="mt-3 text-[10px] text-text-tertiary">点一下添加 / 再点取消</p>
+            <div className="mt-1.5 flex flex-wrap gap-2">
               {appList.map((app) => (
                 <AppChip
                   key={app.id}
@@ -193,7 +235,6 @@ export function PresetEditor({
                   }}
                 />
               ))}
-              {/* 当前应用：只显示，不进列表 */}
               {currentApp && (
                 <AppChip
                   label={`${currentApp.name}（当前）`}
@@ -225,11 +266,7 @@ export function PresetEditor({
                 获取当前应用
               </button>
               <span className="text-[11px] text-text-tertiary">
-                {boundAppIds.length > 0
-                  ? `已绑定 ${boundAppIds.length} 个`
-                  : appList.length > 0
-                    ? `已记录 ${appList.length} 个应用`
-                    : '还没拉过列表'}
+                {appList.length > 0 ? `已记录 ${appList.length} 个应用` : '还没拉过列表'}
               </span>
             </div>
           </Section>
@@ -341,85 +378,6 @@ export function PresetEditor({
               </p>
             )}
           </Section>
-
-          {/* ---------- 磁铁库（全局） ---------- */}
-          <div className="mt-4">
-            <button
-              type="button"
-              onClick={() => setLibraryOpen((v) => !v)}
-              aria-expanded={libraryOpen}
-              className="flex w-full items-center justify-between rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2.5 text-[12px] text-text-secondary transition-colors hover:bg-surface-3"
-            >
-              <span>磁铁库（{magnets.length}）</span>
-              <motion.span
-                aria-hidden
-                className="flex items-center"
-                animate={{ rotate: libraryOpen ? 180 : 0 }}
-                transition={springSmooth}
-              >
-                <Plus
-                  size={13}
-                  strokeWidth={1.8}
-                  style={{ transform: libraryOpen ? 'none' : 'rotate(45deg)' }}
-                />
-              </motion.span>
-            </button>
-
-            <Collapse open={libraryOpen}>
-              <div className="pt-2">
-                <p className="text-[10px] text-text-tertiary">
-                  磁铁是全局的 —— 磁贴和麦克风按钮共用这一批
-                </p>
-                <ul className="mt-2 flex flex-col gap-1.5">
-                  {magnets.map((magnet) => (
-                    <li
-                      key={magnet.id}
-                      className="flex items-center gap-2 rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2"
-                    >
-                      {createElement(tileIcon(magnet.icon), {
-                        size: 14,
-                        strokeWidth: 1.8,
-                        className: 'shrink-0 text-text-secondary',
-                      })}
-                      <span className="min-w-0 flex-1 truncate text-[12px] text-text-primary">
-                        {magnet.label}
-                      </span>
-                      <span className="tabular shrink-0 text-[10px] text-text-tertiary">
-                        {magnetHasKey(magnet) ? magnetKeys(magnet) : '未设置'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMagnetDraft({ magnet, applyTo: null })
-                        }
-                        className="shrink-0 rounded-full px-2 py-1 text-[10px] text-text-tertiary transition-colors hover:bg-surface-3 hover:text-text-primary"
-                      >
-                        编辑
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteMagnet(magnet.id)}
-                        aria-label={`删除磁铁「${magnet.label}」`}
-                        className="grid size-8 shrink-0 place-items-center rounded-[10px] text-text-tertiary transition-colors hover:bg-surface-3 hover:text-text-primary"
-                      >
-                        <Trash2 size={13} strokeWidth={1.8} />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setMagnetDraft({ magnet: null, applyTo: null })
-                  }
-                  className="mt-2 flex h-11 w-full items-center justify-center gap-1.5 rounded-[10px] border border-dashed border-border-subtle text-[12px] text-text-secondary transition-colors hover:bg-surface-1 hover:text-text-primary"
-                >
-                  <Plus size={14} strokeWidth={1.8} />
-                  新建磁铁
-                </button>
-              </div>
-            </Collapse>
-          </div>
 
           {/* ---------- 删除 ---------- */}
           {!preset.isDefault && (

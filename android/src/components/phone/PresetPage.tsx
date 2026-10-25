@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, Layers, ChevronRight, Plus, Unplug } from 'lucide-react'
+import { ChevronLeft, Command, Layers, ChevronRight, Plus, Unplug } from 'lucide-react'
 import { DragToConfirm } from '@/components/ui/drag-to-confirm'
 import { useAirmic } from '@/lib/airmic-store'
 import { springSnappy } from '@/lib/motion'
@@ -23,12 +23,15 @@ import { appIcon } from './icons'
 export function PresetPage({
   onBack,
   onEditPreset,
+  onOpenMagnets,
 }: {
   onBack: () => void
   onEditPreset: (presetId: string) => void
+  onOpenMagnets: () => void
 }) {
   const {
     presets,
+    magnets,
     activePresetId,
     createPreset,
     disconnect,
@@ -114,6 +117,20 @@ export function PresetPage({
         >
           <Plus size={14} strokeWidth={1.8} />
           新建预案
+        </button>
+
+        {/* ---------- 磁铁库 ---------- */}
+        <button
+          type="button"
+          onClick={onOpenMagnets}
+          className="mt-3 flex w-full items-center gap-2 rounded-xl border border-border-subtle bg-surface-1 px-3 py-3 text-left transition-colors hover:bg-surface-2"
+        >
+          <Command size={15} strokeWidth={1.8} className="text-text-secondary" />
+          <span className="flex-1 text-[12px] text-text-primary">磁铁库</span>
+          <span className="tabular text-[11px] text-text-tertiary">
+            {magnets.length} 个
+          </span>
+          <ChevronRight size={14} strokeWidth={1.8} className="text-text-tertiary" />
         </button>
 
         {/* ---------- 外观 ---------- */}

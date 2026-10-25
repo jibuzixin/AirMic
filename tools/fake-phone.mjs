@@ -3,7 +3,6 @@
 //
 //   node tools/fake-phone.mjs                 # 连上，打印收到的所有消息
 //   node tools/fake-phone.mjs --pair          # 走「手机发起、电脑确认」配对
-//   node tools/fake-phone.mjs --code 123456   # 走「输配对码」配对
 //   node tools/fake-phone.mjs --hotkey cmd+shift+v
 //
 // 选项：
@@ -66,9 +65,6 @@ socket.on('connect', () => {
 
   if (flag('pair')) {
     setTimeout(() => send({ type: 'pair.request', deviceId, deviceName, model: 'Dev Harness' }), 200)
-  }
-  if (flag('code')) {
-    setTimeout(() => send({ type: 'pair.code', deviceId, deviceName, code: String(flag('code')) }), 200)
   }
   if (flag('hotkey')) {
     const combo = String(flag('hotkey')).split('+')

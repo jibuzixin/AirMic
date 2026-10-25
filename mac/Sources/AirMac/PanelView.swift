@@ -6,6 +6,8 @@ import SwiftUI
 /// 纵向顺序不可变：状态行 → 配对码 → 输出设备 → 收音主按钮 → 详细设置 → 退出。
 struct PanelView: View {
     @ObservedObject var state: AppState
+    /// 内容高度变化时回调 —— 外层 NSPanel 用它做窗口高度动画
+    var onHeightChange: ((CGFloat) -> Void)?
     @State private var detailsExpanded = false
 
     /// 面板右下角显示的版本号（用来确认跑的是哪一份构建）
@@ -56,10 +58,16 @@ struct PanelView: View {
             .padding(.vertical, 10)
         }
         .frame(width: 318)
-        // 更接近控制中心那种「薄」毛玻璃
-        .background(.ultraThinMaterial)
+        // 背景交给外层 NSPanel 的 NSVisualEffectView，这里保持透明
+        .background(
+            GeometryReader { proxy in
+                Color.clear.preference(key: PanelHeightKey.self, value: proxy.size.height)
+            }
+        )
+        .onPreferenceChange(PanelHeightKey.self) { height in
+            onHeightChange?(height)
+        }
         .foregroundStyle(Theme.textPrimary)
-        .animation(.spring(response: 0.28, dampingFraction: 0.9), value: state.pendingRequests.count)
         .onAppear {
             // 面板打开时刷新设备列表（设备可能被插拔）
             state.refreshDevices()
@@ -115,7 +123,6 @@ struct PanelView: View {
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 10)
-        .transition(.opacity)
     }
 
     // MARK: - 辅助功能权限
@@ -246,7 +253,7 @@ struct PanelView: View {
             }
             .buttonStyle(.plain)
 
-            Collapsible(expanded: detailsExpanded) {
+            if detailsExpanded {
                 VStack(alignment: .leading, spacing: 10) {
                     statsGrid
 
@@ -403,5 +410,14 @@ struct PanelActionButtonStyle: ButtonStyle {
             )
             .foregroundStyle(isPrimary ? Color.black : Theme.textPrimary)
             .opacity(configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+
+/// 内容高度（给外层窗口动画用）
+struct PanelHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
     }
 }

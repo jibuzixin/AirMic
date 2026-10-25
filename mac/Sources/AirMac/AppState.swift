@@ -30,7 +30,6 @@ final class AppState: ObservableObject {
     var isRecording: Bool { server.isRecording }
     var connectedPhoneName: String? { server.connectedPhoneName }
     var stats: Stats { server.stats }
-    var pairCode: String { server.pairCodeValue }
     var activePresetName: String? { server.activePreset?.name }
     var foregroundAppName: String { server.foregroundApp.name }
     /// 菜单栏图标：有待处理的配对请求时显示铃铛
@@ -141,10 +140,6 @@ final class AppState: ObservableObject {
     func clearDiagnostics() {
         Diag.clear()
         diagnosticsCopied = false
-    }
-
-    func refreshPairCode() {
-        server.refreshPairCode()
     }
 
     func toggleRecording() {

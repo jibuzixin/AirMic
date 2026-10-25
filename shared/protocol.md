@@ -51,11 +51,9 @@
 | 客户端→电脑 | `pair.request` | `deviceId, deviceName, model` | 只有**未配对**设备才发 |
 | 电脑→客户端 | `pair.request.recv` | — | 电脑端弹确认 |
 | 电脑→客户端 | `pair.respond` | `approved: Bool, token?` | 同意则下发长期 token |
-| 客户端→电脑 | `pair.code` | `code: "6位数字"` | 路径 B：手机输入配对码 |
-| 电脑→客户端 | `pair.result` | `ok: Bool, message, token?` | 失败时 message 说明「发生了什么 + 怎么修」 |
 
-配对码规则：6 位数字，**一次性**，有效期 120 秒；电脑端可刷新，刷新后旧码**立刻失效**。
-长期 token：32 字节随机，Base64，存 macOS Keychain；手机端存本地。
+配对只有一条路径：**手机点设备 → 电脑端「允许 / 拒绝」**。配对码已移除。
+长期 token：32 字节随机，Base64，存 macOS 本地文件；手机端存本地。
 
 **已配对设备点一下直接连上**：客户端带 token 的 `hello` → 电脑端校验通过 → `welcome`，不再弹任何确认。
 

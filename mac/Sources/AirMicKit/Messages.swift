@@ -73,8 +73,6 @@ public struct Message: Codable, Equatable {
         static let pairRequest = "pair.request"
         static let pairRequestReceived = "pair.request.recv"
         static let pairRespond = "pair.respond"
-        static let pairCode = "pair.code"
-        static let pairResult = "pair.result"
 
         static let state = "state"
         static let presetActive = "preset.active"

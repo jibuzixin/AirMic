@@ -22,7 +22,6 @@ func usage() {
       airmicd serve --auto-approve 启动服务端并自动同意配对（开发用）
       airmicd serve --audio       同时打开音频管线（配合 airmicd tone 自测）
       airmicd serve --test-tone   打开 1kHz 测试音（验证「写设备」链路）
-      airmicd pair-code            打印当前配对码
       airmicd devices              列出已配对设备
       airmicd config               打印当前配置（磁铁 / 预案）
       airmicd keycode [按键…]       打印按键的 macOS 虚拟键码
@@ -43,7 +42,6 @@ case "serve":
     do {
         try server.start()
         print("AirMic 服务端已启动（设备 id：\(server.deviceId)）")
-        print("配对码：\(server.pairCode.code)  有效期 \(server.pairCode.remainingSeconds) 秒")
 
         if arguments.contains("--test-tone") {
             // 只测输出链路：电脑自己发 1kHz，能听见就说明「写设备」这一步是通的
@@ -69,10 +67,6 @@ case "serve":
         print("启动失败：\(error.localizedDescription)")
         exit(1)
     }
-
-case "pair-code":
-    let store = PairingCode()
-    print(store.code)
 
 case "devices":
     let store = PairingStore()

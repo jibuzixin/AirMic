@@ -60,10 +60,6 @@ public final class AirMicServer: ObservableObject {
 
     /// 菜单栏图标要不要显示铃铛（有待处理的配对请求时）
     public var hasPendingPairRequest: Bool { !pendingRequests.isEmpty }
-    /// 当前配对码（刷新后旧码立刻失效）
-    @Published public private(set) var pairCodeValue: String = ""
-    /// 配对码剩余有效秒数
-    @Published public private(set) var pairCodeRemaining: Int = 0
     /// 面板上显示的设备名（连上手机后是手机名）
     @Published public private(set) var connectedPhoneName: String?
     /// 出错信息（面板上显示一行提示）
@@ -73,7 +69,6 @@ public final class AirMicServer: ObservableObject {
     /// 已经用 token 认证过的连接（这些连接再发配对请求就是多余的）
     private var authenticatedClients = Set<String>()
 
-    public let pairCode = PairingCode()
 
     /// 开发期用：自动同意配对请求（生产版永远是 false）
     public var autoApprovePairing = false
@@ -104,8 +99,6 @@ public final class AirMicServer: ObservableObject {
         config = configStore.load()
         pairedDevices = pairingStore.allDevices()
         foregroundApp = foregroundWatcher.current
-        pairCodeValue = pairCode.code
-        pairCodeRemaining = pairCode.remainingSeconds
 
         // Bonjour TXT：手机端扫描时能看到名字、id、版本
         control.setTXTRecord([
@@ -180,14 +173,6 @@ public final class AirMicServer: ObservableObject {
 
     public func refreshPairedDevices() {
         pairedDevices = pairingStore.allDevices()
-    }
-
-    /// 刷新配对码 —— 旧码立刻失效
-    public func refreshPairCode() {
-        pairCode.refresh()
-        pairCodeValue = pairCode.code
-        pairCodeRemaining = pairCode.remainingSeconds
-        Log.info("配对码已刷新")
     }
 
     /// 电脑端主动删除某台设备的配对信息
@@ -346,8 +331,6 @@ public final class AirMicServer: ObservableObject {
             handleHello(message, client: client)
         case Message.Kind.pairRequest:
             handlePairRequest(message, client: client)
-        case Message.Kind.pairCode:
-            handlePairCode(message, client: client)
         case Message.Kind.hotkeyExecute:
             guard let combo = message.combo else { return }
             guard requireAccessibility(client: client) else { return }
@@ -460,36 +443,6 @@ public final class AirMicServer: ObservableObject {
             // 开发模式：直接同意，不等请求进队列（否则会竞态）
             respond(to: info, approved: true, client: client)
         }
-    }
-
-    private func handlePairCode(_ message: Message, client: ClientConnection) {
-        let code = message.code ?? ""
-        guard pairCode.consume(code) else {
-            var result = Message(type: Message.Kind.pairResult)
-            result.ok = false
-            result.message = "配对码已过期，在电脑端重新生成一个"
-            client.send(result)
-            return
-        }
-        // 配对码校验通过 = 电脑端也记住这台设备，之后点一下就能直连
-        let deviceId = message.deviceId ?? "code-\(UUID().uuidString.prefix(8))"
-        let token = Self.makeToken()
-        let device = PairedDevice(
-            id: deviceId,
-            name: message.deviceName ?? "已配对设备",
-            model: message.model ?? "",
-            token: token,
-            pairedAt: Date()
-        )
-        try? pairingStore.remember(device)
-        onMain { self.pairedDevices = self.pairingStore.allDevices() }
-
-        var result = Message(type: Message.Kind.pairResult)
-        result.ok = true
-        result.token = token
-        result.message = "已连接"
-        client.send(result)
-        Log.info("配对码校验通过")
     }
 
     private func handleConfig(_ message: Message, client: ClientConnection) {

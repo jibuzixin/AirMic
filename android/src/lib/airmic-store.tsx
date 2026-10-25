@@ -136,7 +136,6 @@ export type AirmicStore = {
   stats: Stats
   bufferMs: number
   testToneOn: boolean
-  pairCode: string
 
   /* --- 手机端 --- */
   micMode: MicMode
@@ -167,8 +166,6 @@ export type AirmicStore = {
   requestPair: (deviceId: string) => void
   approvePairing: () => void
   rejectPairing: () => void
-  pairByCode: (code: string) => { ok: boolean; message: string }
-  refreshPairCode: () => void
   connectTo: (deviceId: string) => void
   unpairDevice: (deviceId: string) => void
   disconnect: () => void
@@ -237,7 +234,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [stats, setStats] = useState<Stats>(EMPTY_STATS)
   const [bufferMs, setBufferMsState] = useState(EMPTY_STATS.bufferMs)
   const [testToneOn, setTestToneOn] = useState(false)
-  const [pairCode, setPairCode] = useState('')
 
   const [micMode, setMicMode] = useState<MicMode>('idle')
   const [magnets, setMagnets] = useState<HotkeyMagnet[]>(persisted.magnets)
@@ -449,15 +445,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           }
           break
         }
-        case 'pair.result': {
-          if (message.ok === true && message.token) {
-            setPaired(true)
-            if (pairingDevice) setPairedDevice(pairingDevice)
-            persist({ token: message.token })
-            void transport.saveToken(deviceInfo.deviceId, message.token)
-          }
-          break
-        }
         case 'state':
           if (message.server) applyServerState(message.server)
           break
@@ -603,31 +590,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   const approvePairing = useCallback(() => setPairingRequest(null), [])
   const rejectPairing = useCallback(() => setPairingRequest(null), [])
-
-  const pairByCode = useCallback(
-    (code: string) => {
-      const trimmed = code.trim()
-      if (trimmed.length !== 6) {
-        return { ok: false, message: '配对码是 6 位数字，再数一遍' }
-      }
-      if (!/^\d{6}$/.test(trimmed)) {
-        return { ok: false, message: '配对码只能有数字，重新输入' }
-      }
-      send({
-        type: 'pair.code',
-        code: trimmed,
-        deviceId: deviceInfo.deviceId,
-        deviceName: deviceInfo.deviceName || 'Android 手机',
-      })
-      // 结果由 pair.result 异步回来，这里先给个「已提交」的回执
-      return { ok: true, message: '已提交配对码，等电脑端确认' }
-    },
-    [deviceInfo.deviceId, deviceInfo.deviceName, send],
-  )
-
-  const refreshPairCode = useCallback(() => {
-    /* 配对码由电脑端生成，手机端没有刷新入口 */
-  }, [])
 
   /** 已配对设备：点一下直接连上，不请求同意 */
   const connectTo = useCallback(
@@ -971,7 +933,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       stats,
       bufferMs,
       testToneOn,
-      pairCode,
       micMode,
       magnets,
       presets,
@@ -990,8 +951,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       requestPair,
       approvePairing,
       rejectPairing,
-      pairByCode,
-      refreshPairCode,
       connectTo,
       unpairDevice,
       disconnect,
@@ -1032,7 +991,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       stats,
       bufferMs,
       testToneOn,
-      pairCode,
       micMode,
       magnets,
       presets,
@@ -1051,8 +1009,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       requestPair,
       approvePairing,
       rejectPairing,
-      pairByCode,
-      refreshPairCode,
       connectTo,
       unpairDevice,
       disconnect,

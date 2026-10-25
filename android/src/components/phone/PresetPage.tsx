@@ -142,6 +142,9 @@ export function PresetPage({
                 </button>
               ))}
             </div>
+            <p className="mt-2 text-[10px] text-text-faint">
+              版本 0.2.0 · 构建 {__BUILD_TIME__}
+            </p>
           </div>
         </div>
 

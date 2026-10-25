@@ -480,13 +480,33 @@ public final class AirMicServer: ObservableObject {
         var ack = Message(type: Message.Kind.configAck)
         ack.revision = updated.revision
         client.send(ack)
-        // 配置变了，当前预案可能也要重算
-        if let preset = activePreset {
-            sendActivePreset(preset, appName: foregroundApp.name, fallback: false)
-        }
+        // 配置变了，按当前前台应用重算一遍预案 ——
+        // 否则刚在手机上绑好应用，电脑端还拿着旧预案，切应用不会有变化。
+        recomputeActivePreset()
     }
 
     // MARK: - 前台应用 → 预案
+
+    /// 按当前前台应用重算预案并广播
+    private func recomputeActivePreset() {
+        let currentId = foregroundApp.bundleId.isEmpty
+            ? foregroundApp.name
+            : foregroundApp.bundleId
+        let bound = config.presets.first { preset in
+            if preset.appIds.contains(currentId) { return true }
+            if let appId = preset.appId, !appId.isEmpty, appId == currentId { return true }
+            guard let appName = preset.appName, !appName.isEmpty else { return false }
+            return appName.caseInsensitiveCompare(foregroundApp.name) == .orderedSame
+                || appName.caseInsensitiveCompare(foregroundApp.bundleId) == .orderedSame
+        }
+        guard let next = bound ?? defaultPreset() else { return }
+        let isFallback = bound == nil
+        let changed = activePreset?.id != next.id
+        if changed {
+            onMain { self.activePreset = next }
+            sendActivePreset(next, appName: foregroundApp.name, fallback: isFallback)
+        }
+    }
 
     private func handleForegroundChange(_ app: ForegroundApp) {
         // 忽略 AirMic 自己：打开菜单栏面板时它可能变成「前台应用」，
@@ -504,25 +524,7 @@ public final class AirMicServer: ObservableObject {
         broadcastState()
 
         // 需求说明书 §4.4：绑了就切过去，没绑就切默认预案
-        let currentId = foregroundApp.bundleId.isEmpty ? foregroundApp.name : foregroundApp.bundleId
-        let bound = config.presets.first { preset in
-            // 一个预案可以绑多个应用；一个应用只会属于一个预案
-            if preset.appIds.contains(currentId) { return true }
-            if let appId = preset.appId, !appId.isEmpty, appId == currentId { return true }
-            // 老配置只有名字时的兜底
-            guard let appName = preset.appName, !appName.isEmpty else { return false }
-            return appName.caseInsensitiveCompare(app.name) == .orderedSame
-                || appName.caseInsensitiveCompare(app.bundleId) == .orderedSame
-        }
-        let fallback = defaultPreset()
-        let next = bound ?? fallback
-        guard let next else { return }
-
-        let isFallback = bound == nil
-        if activePreset?.id != next.id {
-            onMain { self.activePreset = next }
-            sendActivePreset(next, appName: app.name, fallback: isFallback)
-        }
+        recomputeActivePreset()
     }
 
     /// 当前要接收快捷键的应用（不给 AirMic 自己）

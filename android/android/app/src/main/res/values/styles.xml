@@ -24,7 +24,13 @@
 
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
-        <item name="android:background">@drawable/splash</item>
+        <!-- 不用 splash.png：那些图是浅色的，边缘到边缘时会在顶部露出一条白底 -->
         <item name="windowSplashScreenBackground">@color/airmic_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="android:windowBackground">@color/airmic_background</item>
+        <!-- ⚠️ 启动图结束后必须切回正常主题 ——
+             不切的话窗口背景一直停在启动图（多为浅色），
+             边缘到边缘时就会在状态栏位置露出一条白底。 -->
+        <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
     </style>
 </resources>

@@ -57,6 +57,19 @@ public class AirMicPlugin extends Plugin {
 
     @Override
     public void load() {
+        // 强制 edge-to-edge：页面画到状态栏下面，颜色由我们自己的背景决定，
+        // 不会出现「系统画一条白底」的观感。Android 15 本来就会强制，
+        // 这里让 14 及以下保持一致。
+        final Activity activity = getActivity();
+        if (activity != null) {
+            activity.runOnUiThread(() -> {
+                Window window = activity.getWindow();
+                window.setStatusBarColor(android.graphics.Color.TRANSPARENT);
+                window.setNavigationBarColor(android.graphics.Color.TRANSPARENT);
+                WindowCompat.setDecorFitsSystemWindows(window, false);
+            });
+        }
+
         // 真实麦克风电平 → 界面上的电平表（原型里那是随机数假数据）
         MicCapture.setGlobalLevelListener(level -> {
             JSObject payload = new JSObject();

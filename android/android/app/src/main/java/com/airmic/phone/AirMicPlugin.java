@@ -1,7 +1,9 @@
 package com.airmic.phone;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
+import android.view.Window;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.util.Log;
@@ -14,6 +16,12 @@ import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
 import com.getcapacitor.annotation.PermissionCallback;
+
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import org.json.JSONObject;
 
@@ -247,6 +255,66 @@ public class AirMicPlugin extends Plugin {
     public void stopMic(PluginCall call) {
         AirmicMicService.stop(getContext());
         call.resolve();
+    }
+
+    /* -------------------------------------------------------------- *
+     * 系统栏
+     * -------------------------------------------------------------- */
+
+    /**
+     * 系统栏高度（CSS px）。
+     *
+     * <p>页面是铺满全屏的（画到状态栏下面），所以前端需要自己留出这块内边距 ——
+     * 否则要么内容被状态栏挡住，要么露出一条白色的窗口底色。
+     */
+    @PluginMethod
+    public void getInsets(PluginCall call) {
+        final Activity activity = getActivity();
+        if (activity == null) {
+            call.resolve(emptyInsets());
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            JSObject result = new JSObject();
+            float density = activity.getResources().getDisplayMetrics().density;
+            WindowInsetsCompat insets = ViewCompat.getRootWindowInsets(getBridge().getWebView());
+            if (insets != null) {
+                Insets bars = insets.getInsets(
+                    WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout());
+                result.put("top", bars.top / density);
+                result.put("bottom", bars.bottom / density);
+            } else {
+                result.put("top", 0);
+                result.put("bottom", 0);
+            }
+            call.resolve(result);
+        });
+    }
+
+    private JSObject emptyInsets() {
+        JSObject result = new JSObject();
+        result.put("top", 0);
+        result.put("bottom", 0);
+        return result;
+    }
+
+    /** 状态栏 / 导航栏图标用深色还是浅色（浅色背景用深色图标） */
+    @PluginMethod
+    public void setSystemBars(PluginCall call) {
+        final Activity activity = getActivity();
+        final boolean lightBackground = call.getBoolean("light", false);
+        if (activity == null) {
+            call.resolve();
+            return;
+        }
+        activity.runOnUiThread(() -> {
+            Window window = activity.getWindow();
+            WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+            controller.setAppearanceLightStatusBars(lightBackground);
+            controller.setAppearanceLightNavigationBars(lightBackground);
+            call.resolve();
+        });
     }
 
     /* -------------------------------------------------------------- *

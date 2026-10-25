@@ -31,6 +31,9 @@ import { createTransport, type AirMicTransport } from './transport'
 
 export type MicMode = 'idle' | 'continuous' | 'ptt'
 
+/** 外观：跟随系统 / 浅色 / 深色 */
+export type ThemeMode = 'system' | 'light' | 'dark'
+
 export type PairingRequest = {
   deviceId: string
   deviceName: string
@@ -69,6 +72,8 @@ type Persisted = {
   /** 上次连的电脑地址（下次打开自动连） */
   deviceHost: string | null
   devicePort: number | null
+  /** 外观 */
+  theme: ThemeMode
 }
 
 function loadPersisted(): Persisted {
@@ -81,6 +86,7 @@ function loadPersisted(): Persisted {
     appList: [],
     deviceHost: null,
     devicePort: null,
+    theme: 'system',
   }
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
@@ -91,10 +97,23 @@ function loadPersisted(): Persisted {
       deviceId: parsed.deviceId ?? null,
       deviceName: parsed.deviceName ?? null,
       magnets: parsed.magnets?.length ? parsed.magnets : SEED_MAGNETS,
-      presets: parsed.presets?.length ? parsed.presets : SEED_PRESETS,
+      // 旧版本预案只有单个 appId / appName → 迁移成 appIds
+      presets: (parsed.presets?.length ? parsed.presets : SEED_PRESETS).map(
+        (preset: Preset) => {
+          const appIds = preset.appIds?.length
+            ? preset.appIds
+            : preset.appId
+              ? [preset.appId]
+              : preset.appName
+                ? [preset.appName]
+                : []
+          return { ...preset, appIds, micHoldId: preset.micHoldId ?? null }
+        },
+      ),
       appList: parsed.appList ?? [],
       deviceHost: parsed.deviceHost ?? null,
       devicePort: parsed.devicePort ?? null,
+      theme: parsed.theme ?? 'system',
     }
   } catch {
     return fallback
@@ -135,6 +154,10 @@ export type AirmicStore = {
   currentApp: KnownApp | null
   /** 电脑端返回的错误（比如快捷键没有权限） */
   remoteError: string | null
+  /** 外观模式 */
+  themeMode: ThemeMode
+  /** 系统栏高度 */
+  insets: { top: number; bottom: number }
   /** 真实麦克风电平（0–1）—— 电平表用这个，不是假数据 */
   micLevel: number
   connectionError: string | null
@@ -182,6 +205,9 @@ export type AirmicStore = {
   fetchAppList: () => void
   /** 取电脑当前的前台应用（不保存） */
   fetchCurrentApp: () => void
+
+  /* --- 外观 --- */
+  setThemeMode: (mode: ThemeMode) => void
 }
 
 const AirmicContext = createContext<AirmicStore | null>(null)
@@ -228,6 +254,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const [pairingDevice, setPairingDevice] = useState<Device | null>(null)
   /** 真实麦克风电平（0–1）—— 电平表用这个，不再是假数据 */
   const [micLevel, setMicLevel] = useState(0)
+  /** 外观模式 */
+  const [themeMode, setThemeModeState] = useState<ThemeMode>(persisted.theme ?? 'system')
+  /** 系统栏高度（页面铺满全屏，自己留边距） */
+  const [insets, setInsets] = useState({ top: 0, bottom: 0 })
   /** 长按说话时按下的组合键（松开时要还原） */
   const heldComboRef = useRef<string[] | null>(null)
   const [connectionError, setConnectionError] = useState<string | null>(null)
@@ -247,6 +277,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         appList,
         deviceHost: persisted.deviceHost,
         devicePort: persisted.devicePort,
+        theme: themeMode,
         ...patch,
       }
       try {
@@ -255,7 +286,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         /* 存不下就算了，不影响本次会话 */
       }
     },
-    [appList, magnets, persisted, presets],
+    [appList, magnets, persisted, presets, themeMode],
   )
 
   const send = useCallback(
@@ -290,6 +321,59 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /* ---------- 外观 ---------- */
+  useEffect(() => {
+    const media = window.matchMedia('(prefers-color-scheme: light)')
+    const apply = () => {
+      const resolved: 'light' | 'dark' =
+        themeMode === 'system' ? (media.matches ? 'light' : 'dark') : themeMode
+      document.documentElement.dataset.theme = resolved
+      document.documentElement.classList.toggle('dark', resolved === 'dark')
+      void transport.setSystemBars(resolved === 'light')
+    }
+    apply()
+    if (themeMode !== 'system') return
+    media.addEventListener('change', apply)
+    return () => media.removeEventListener('change', apply)
+  }, [themeMode, transport])
+
+  const setThemeMode = useCallback(
+    (mode: ThemeMode) => {
+      setThemeModeState(mode)
+      persist({ theme: mode })
+    },
+    [persist],
+  )
+
+  /* ---------- 系统栏高度 ---------- */
+  useEffect(() => {
+    let cancelled = false
+    const read = () => {
+      void transport
+        .getInsets()
+        .then((value) => {
+          if (!cancelled) setInsets(value)
+        })
+        .catch(() => {
+          /* 拿不到就不留边距 */
+        })
+    }
+    // WebView 刚起来时可能拿不到，多试几次
+    read()
+    const timers = [150, 500, 1200].map((ms) => window.setTimeout(read, ms))
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') read()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('resize', read)
+    return () => {
+      cancelled = true
+      timers.forEach((timer) => window.clearTimeout(timer))
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('resize', read)
+    }
+  }, [transport])
 
   /* ---------- 本机设备信息 ---------- */
   useEffect(() => {
@@ -639,9 +723,14 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
    * ⚠️ 这是「麦克风按钮自己的绑定」，和底部独立磁贴是两件事。
    */
   const presetMagnet = useCallback(
-    (which: 'press' | 'release') => {
+    (which: 'press' | 'release' | 'hold') => {
       const preset = presets.find((p) => p.id === activePresetId)
-      const id = which === 'press' ? preset?.micPressId : preset?.micReleaseId
+      const id =
+        which === 'press'
+          ? preset?.micPressId
+          : which === 'release'
+            ? preset?.micReleaseId
+            : preset?.micHoldId
       if (!id) return null
       return magnets.find((m) => m.id === id) ?? null
     },
@@ -681,7 +770,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (micMode === 'ptt') return
     warnIfServerIdle()
     // 长按语义：按下组合键但**不松开**，等手指抬起来才还原
-    const magnet = presetMagnet('press')
+    // 用的是「长按」自己绑定的磁铁，与「按下 / 松开」互相独立
+    const magnet = presetMagnet('hold')
     if (magnet) {
       const combo = magnetCombo(magnet)
       if (combo.length > 0) {
@@ -755,7 +845,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   const updatePreset = useCallback(
     (id: string, patch: Partial<Preset>) => {
-      const next = presets.map((p) => (p.id === id ? { ...p, ...patch } : p))
+      let next = presets.map((p) => (p.id === id ? { ...p, ...patch } : p))
+      // 一个应用只能绑一个预案：从别的预案里摘掉
+      if (patch.appIds) {
+        const claimed = new Set(patch.appIds)
+        next = next.map((p) =>
+          p.id === id
+            ? p
+            : { ...p, appIds: (p.appIds ?? []).filter((a) => !claimed.has(a)) },
+        )
+      }
       setPresets(next)
       persist({ presets: next })
       pushConfig(magnets, next)
@@ -842,6 +941,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       currentApp,
       remoteError,
       micLevel,
+      themeMode,
+      insets,
       connectionError,
       startScan,
       requestPair,
@@ -872,6 +973,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       dismissRemoteError,
       fetchAppList,
       fetchCurrentApp,
+      setThemeMode,
     }),
     [
       paired,
@@ -898,6 +1000,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       currentApp,
       remoteError,
       micLevel,
+      themeMode,
+      insets,
       connectionError,
       startScan,
       requestPair,
@@ -928,6 +1032,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       dismissRemoteError,
       fetchAppList,
       fetchCurrentApp,
+      setThemeMode,
     ],
   )
 

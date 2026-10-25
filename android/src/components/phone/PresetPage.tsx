@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, ChevronRight, Plus, Unplug } from 'lucide-react'
+import { ChevronLeft, Layers, ChevronRight, Plus, Unplug } from 'lucide-react'
 import { DragToConfirm } from '@/components/ui/drag-to-confirm'
 import { useAirmic } from '@/lib/airmic-store'
 import { springSnappy } from '@/lib/motion'
@@ -27,8 +27,16 @@ export function PresetPage({
   onBack: () => void
   onEditPreset: (presetId: string) => void
 }) {
-  const { presets, activePresetId, createPreset, disconnect, unpair, pairedDevice } =
-    useAirmic()
+  const {
+    presets,
+    activePresetId,
+    createPreset,
+    disconnect,
+    unpair,
+    pairedDevice,
+    themeMode,
+    setThemeMode,
+  } = useAirmic()
 
   return (
     <div className="flex h-full flex-col">
@@ -81,7 +89,7 @@ export function PresetPage({
                   </div>
 
                   <div className="mt-1 flex items-center gap-1.5 text-[11px] text-text-tertiary">
-                    <AppLabel appName={preset.appName} />
+                    <AppLabel appIds={preset.appIds ?? []} appName={preset.appName} />
                     <span className="text-text-faint">·</span>
                     <span className="tabular">
                       麦克风 {countMicBindings(preset)} · 磁贴 {preset.tiles.length}
@@ -107,6 +115,35 @@ export function PresetPage({
           <Plus size={14} strokeWidth={1.8} />
           新建预案
         </button>
+
+        {/* ---------- 外观 ---------- */}
+        <div className="mt-6">
+          <div className="rounded-xl border border-border-subtle bg-surface-1 p-3">
+            <p className="text-[11px] text-text-tertiary">外观</p>
+            <div className="mt-2 flex gap-2">
+              {(
+                [
+                  { id: 'system', label: '跟随系统' },
+                  { id: 'light', label: '浅色' },
+                  { id: 'dark', label: '深色' },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setThemeMode(option.id)}
+                  className={
+                    themeMode === option.id
+                      ? 'flex-1 rounded-[10px] border border-border-strong bg-surface-3 py-1.5 text-[12px] text-text-primary'
+                      : 'flex-1 rounded-[10px] border border-border-subtle bg-surface-2 py-1.5 text-[12px] text-text-secondary'
+                  }
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
 
         {/* ---------- 连接管理 ---------- */}
         <div className="mt-auto pt-6">
@@ -146,10 +183,40 @@ export function PresetPage({
 }
 
 function countMicBindings(preset: Preset): number {
-  return (preset.micPressId ? 1 : 0) + (preset.micReleaseId ? 1 : 0)
+  return (
+    (preset.micPressId ? 1 : 0) +
+    (preset.micReleaseId ? 1 : 0) +
+    (preset.micHoldId ? 1 : 0)
+  )
 }
 
-function AppLabel({ appName }: { appName: string | null }) {
+function AppLabel({
+  appIds,
+  appName,
+}: {
+  appIds: string[]
+  appName: string | null
+}) {
+  const count = appIds.length
+  if (count > 1) {
+    return (
+      <span className="flex items-center gap-1 text-text-secondary">
+        <Layers size={11} strokeWidth={1.8} />
+        已绑定 {count} 个应用
+      </span>
+    )
+  }
+  if (count === 1) {
+    const id = appIds[0]
+    // id 通常是 bundle id，显示时取最后一段更可读
+    const label = appName || id.split('.').pop() || id
+    return (
+      <span className="flex items-center gap-1 text-text-secondary">
+        {createElement(appIcon(label), { size: 11, strokeWidth: 1.8 })}
+        {label}
+      </span>
+    )
+  }
   if (!appName) {
     return <span className="text-text-tertiary">未绑定应用</span>
   }

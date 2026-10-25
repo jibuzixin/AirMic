@@ -37,6 +37,10 @@ export interface AirMicTransport {
   onConnection(handler: (state: { connected: boolean; error?: string }) => void): void
   /** 真实麦克风电平（0–1） */
   onLevel(handler: (level: number) => void): void
+  /** 系统栏高度（CSS px）—— 页面铺满全屏，需要自己留边距 */
+  getInsets(): Promise<{ top: number; bottom: number }>
+  /** 设置状态栏图标明暗（浅色背景 → 深色图标） */
+  setSystemBars(lightBackground: boolean): Promise<void>
 }
 
 /* ------------------------------------------------------------------ *
@@ -49,6 +53,8 @@ interface AirMicNativePlugin {
   saveToken(options: { deviceId: string; token: string }): Promise<void>
   checkPermissions(): Promise<Record<string, string>>
   requestPermissions(options: { permissions: string[] }): Promise<Record<string, string>>
+  getInsets(): Promise<{ top: number; bottom: number }>
+  setSystemBars(options: { light: boolean }): Promise<void>
   connect(options: { deviceId: string; host: string; port: number }): Promise<void>
   disconnect(): Promise<void>
   send(options: { payload: string }): Promise<void>
@@ -119,6 +125,14 @@ class NativeTransport implements AirMicTransport {
 
   onLevel(handler: (level: number) => void): void {
     void AirMicNative.addListener('level', (data) => handler(Number(data.level) || 0))
+  }
+
+  async getInsets(): Promise<{ top: number; bottom: number }> {
+    return AirMicNative.getInsets()
+  }
+
+  async setSystemBars(lightBackground: boolean): Promise<void> {
+    await AirMicNative.setSystemBars({ light: lightBackground })
   }
 }
 
@@ -203,6 +217,14 @@ class LoopbackTransport implements AirMicTransport {
   onLevel(handler: (level: number) => void): void {
     /* 开发模式没有真实电平 */
     void handler
+  }
+
+  async getInsets(): Promise<{ top: number; bottom: number }> {
+    return { top: 0, bottom: 0 }
+  }
+
+  async setSystemBars(): Promise<void> {
+    /* 开发模式没有系统栏 */
   }
 
   private emit(message: Record<string, any>) {

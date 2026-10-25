@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="colorPrimary">#FFB020</color>
+    <color name="colorPrimaryDark">#0B0B0D</color>
+    <color name="colorAccent">#FFB020</color>
+    <!-- 窗口底色：和 App 的 surface-0 一致，避免边缘到边缘时露出白条 -->
+    <color name="airmic_background">#0B0B0D</color>
+</resources>

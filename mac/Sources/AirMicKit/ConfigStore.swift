@@ -55,8 +55,8 @@ public final class ConfigStore {
             config = .empty
             return config
         }
-        config = decoded
-        return decoded
+        config = Self.migrate(decoded)
+        return config
     }
 
     /// 保存。返回是否写成功。
@@ -86,6 +86,24 @@ public final class ConfigStore {
         return next
     }
 
+    /// 旧版本配置迁移：单个 appId → appIds
+    static func migrate(_ input: AirMicConfig) -> AirMicConfig {
+        var next = input
+        next.presets = next.presets.map { preset in
+            var p = preset
+            if p.appIds.isEmpty {
+                if let appId = p.appId, !appId.isEmpty {
+                    p.appIds = [appId]
+                } else if let name = p.appName, !name.isEmpty {
+                    // 老配置只有名字，先按名字当 id（桌面端匹配时会兜底按名字比）
+                    p.appIds = [name]
+                }
+            }
+            return p
+        }
+        return next
+    }
+
     /// 删磁铁时把引用它的预案一起清掉，否则磁贴会指向不存在的磁铁。
     public func sanitize(presets: [Preset], magnets: [Magnet]) -> [Preset] {
         let ids = Set(magnets.map(\.id))
@@ -93,6 +111,7 @@ public final class ConfigStore {
             var p = preset
             if let press = p.micPressId, !ids.contains(press) { p.micPressId = nil }
             if let release = p.micReleaseId, !ids.contains(release) { p.micReleaseId = nil }
+            if let hold = p.micHoldId, !ids.contains(hold) { p.micHoldId = nil }
             p.tiles = p.tiles.filter { ids.contains($0.magnetId) }
             return p
         }

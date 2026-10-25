@@ -169,14 +169,18 @@ public struct Tile: Codable, Equatable, Identifiable, Hashable {
 public struct Preset: Codable, Equatable, Identifiable, Hashable {
     public var id: String
     public var name: String
-    /// 绑定的电脑前台应用名；nil = 默认预案
+    /// 绑定的应用 id（可以绑多个）；一个应用只会属于一个预案
+    public var appIds: [String]
+    /// 旧字段：单个应用名（读旧配置时迁移用）
     public var appName: String?
-    /// 绑定的应用 id（重名靠它区分）；nil = 默认预案
+    /// 旧字段：单个应用 id（读旧配置时迁移用）
     public var appId: String?
     /// 麦克风按钮「按下」时执行的磁铁 id
     public var micPressId: String?
-    /// 麦克风按钮「松开」时执行的磁铁 id
+    /// 麦克风按钮「松开」时执行的磁铁 id（点按关闭时触发）
     public var micReleaseId: String?
+    /// 长按说话时执行的磁铁 id（按下保持、松手释放，与上面两个互相独立）
+    public var micHoldId: String?
     /// 独立快捷键磁贴（0–6 个）
     public var tiles: [Tile]
     public var isDefault: Bool?
@@ -184,19 +188,23 @@ public struct Preset: Codable, Equatable, Identifiable, Hashable {
     public init(
         id: String,
         name: String,
+        appIds: [String] = [],
         appName: String? = nil,
         appId: String? = nil,
         micPressId: String? = nil,
         micReleaseId: String? = nil,
+        micHoldId: String? = nil,
         tiles: [Tile] = [],
         isDefault: Bool? = nil
     ) {
         self.id = id
         self.name = name
+        self.appIds = appIds
         self.appName = appName
         self.appId = appId
         self.micPressId = micPressId
         self.micReleaseId = micReleaseId
+        self.micHoldId = micHoldId
         self.tiles = tiles
         self.isDefault = isDefault
     }

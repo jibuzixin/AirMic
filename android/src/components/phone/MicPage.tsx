@@ -126,6 +126,10 @@ export function MicPage({
     () => magnets.find((m) => m.id === preset?.micReleaseId) ?? null,
     [magnets, preset?.micReleaseId],
   )
+  const holdMagnet = useMemo(
+    () => magnets.find((m) => m.id === preset?.micHoldId) ?? null,
+    [magnets, preset?.micHoldId],
+  )
 
   /* ---------- 电脑端没在收音时的提醒 ---------- */
 
@@ -311,17 +315,22 @@ export function MicPage({
 
         <p className="text-[11px] leading-none text-text-tertiary">{hint}</p>
 
-        {/* 麦克风按钮自己的按下 / 松开快捷键 —— 和下面的独立磁贴是两件事。
+        {/* 麦克风按钮自己的三个绑定 —— 和下面的独立磁贴是两件事。
             芯片可点：点一下直接去设置，这是麦克风按钮快捷键的入口。 */}
         <div className="flex items-center gap-2">
           <HotkeyChip
-            label="按下"
+            label="点按开"
             magnet={pressMagnet}
             onClick={onEditMicBindings}
           />
           <HotkeyChip
-            label="松开"
+            label="点按关"
             magnet={releaseMagnet}
+            onClick={onEditMicBindings}
+          />
+          <HotkeyChip
+            label="长按"
+            magnet={holdMagnet}
             onClick={onEditMicBindings}
           />
         </div>

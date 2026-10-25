@@ -26,14 +26,18 @@ export type Tile = {
 export type Preset = {
   id: string
   name: string
-  /** 绑定的电脑前台应用名；null = 默认预案 */
+  /** 绑定的电脑前台应用名（旧字段，仅为兼容保留） */
   appName: string | null
-  /** 绑定的应用 id（重名靠它区分）；null = 默认预案 */
+  /** 绑定的应用 id（旧字段，仅为兼容保留） */
   appId?: string | null
+  /** 绑定的应用 id 列表 —— 一个预案可以绑多个应用 */
+  appIds?: string[]
   /** 麦克风按钮「按下」时执行的磁铁 id */
   micPressId: string | null
-  /** 麦克风按钮「松开」时执行的磁铁 id */
+  /** 麦克风按钮「松开」时执行的磁铁 id（点按关闭时） */
   micReleaseId: string | null
+  /** 长按说话时执行的磁铁 id（按下保持、松手释放，与上面两个独立） */
+  micHoldId?: string | null
   /** 独立快捷键磁贴（0–6 个） */
   tiles: Tile[]
   /** 是否为默认预案 */
@@ -135,9 +139,11 @@ export const SEED_PRESETS: Preset[] = [
     name: '默认预案',
     appName: null,
     appId: null,
+    appIds: [],
     isDefault: true,
     micPressId: null,
     micReleaseId: null,
+    micHoldId: null,
     tiles: [
       { id: 't1', magnetId: 'm-voice' },
       { id: 't2', magnetId: 'm-send' },

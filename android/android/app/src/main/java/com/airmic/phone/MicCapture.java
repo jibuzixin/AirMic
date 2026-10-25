@@ -121,9 +121,16 @@ public class MicCapture {
         Thread thread = worker;
         if (thread != null && thread != Thread.currentThread()) {
             try {
-                thread.join(800);
+                thread.join(1500);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            }
+            if (thread.isAlive()) {
+                // 线程还没退出来 —— **不能**在这里拆原生对象，
+                // 否则它还在 read/encode，直接 use-after-release 崩进程。
+                // 让它自己在 finally 里释放。
+                Log.w(TAG, "采集线程未在超时内退出，交给线程自己释放");
+                return;
             }
         }
         worker = null;

@@ -8,9 +8,9 @@ const config: CapacitorConfig = {
     // 麦克风要能后台跑：前台服务 + 麦克风权限
     allowMixedContent: false,
     backgroundColor: '#0B0B0D',
-    // ⚠️ 必须给 WebView 加系统栏边距 ——
-    // Android 15 起强制边缘到边缘，不加的话界面会顶到状态栏/导航栏下面
-    adjustMarginsForEdgeToEdge: 'force',
+    // 页面铺满全屏（画到状态栏下面），内边距由前端用原生返回的 insets 处理。
+    // 这样状态栏区域的颜色永远跟主题一致 —— 不会像加边距那样露出一条窗口底色。
+    adjustMarginsForEdgeToEdge: 'disable',
   },
   plugins: {
     SplashScreen: {

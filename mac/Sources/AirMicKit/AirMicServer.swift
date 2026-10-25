@@ -506,10 +506,10 @@ public final class AirMicServer: ObservableObject {
         // 需求说明书 §4.4：绑了就切过去，没绑就切默认预案
         let currentId = foregroundApp.bundleId.isEmpty ? foregroundApp.name : foregroundApp.bundleId
         let bound = config.presets.first { preset in
-            // 先按 id 匹配（重名靠 id 区分），再退回按名字
-            if let appId = preset.appId, !appId.isEmpty {
-                return appId == currentId
-            }
+            // 一个预案可以绑多个应用；一个应用只会属于一个预案
+            if preset.appIds.contains(currentId) { return true }
+            if let appId = preset.appId, !appId.isEmpty, appId == currentId { return true }
+            // 老配置只有名字时的兜底
             guard let appName = preset.appName, !appName.isEmpty else { return false }
             return appName.caseInsensitiveCompare(app.name) == .orderedSame
                 || appName.caseInsensitiveCompare(app.bundleId) == .orderedSame

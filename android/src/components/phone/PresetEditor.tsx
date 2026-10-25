@@ -33,6 +33,7 @@ import { MagnetPicker } from './MagnetPicker'
 type PickerTarget =
   | { kind: 'micPress' }
   | { kind: 'micRelease' }
+  | { kind: 'micHold' }
   | { kind: 'tile'; tileId: string }
   | { kind: 'addTile' }
 
@@ -74,6 +75,8 @@ export function PresetEditor({
       updatePreset(preset.id, { micPressId: magnetId })
     } else if (target.kind === 'micRelease') {
       updatePreset(preset.id, { micReleaseId: magnetId })
+    } else if (target.kind === 'micHold') {
+      updatePreset(preset.id, { micHoldId: magnetId })
     } else if (target.kind === 'tile') {
       updatePreset(preset.id, {
         tiles: preset.tiles.map((t) =>
@@ -106,6 +109,8 @@ export function PresetEditor({
 
   const pressMagnet = magnetOf(preset.micPressId)
   const releaseMagnet = magnetOf(preset.micReleaseId)
+  const holdMagnet = magnetOf(preset.micHoldId ?? null)
+  const boundAppIds = preset.appIds ?? []
 
   return (
     /*
@@ -162,13 +167,16 @@ export function PresetEditor({
             />
           </Section>
 
-          {/* ---------- 绑定应用 ---------- */}
-          <Section title="绑定电脑应用" hint="切到这个应用时自动启用本预案">
+          {/* ---------- 绑定应用（可多选） ---------- */}
+          <Section
+            title="绑定电脑应用"
+            hint="可以绑多个应用；一个应用只会属于一套预案"
+          >
             <div className="flex flex-wrap gap-2">
               <AppChip
                 label="不绑定"
-                active={!preset.appId && !preset.appName}
-                onClick={() => updatePreset(preset.id, { appName: null, appId: null })}
+                active={boundAppIds.length === 0}
+                onClick={() => updatePreset(preset.id, { appIds: [] })}
               />
               {/* 应用列表来自电脑端（用户主动拉取，手机端本地缓存） */}
               {appList.map((app) => (
@@ -176,8 +184,13 @@ export function PresetEditor({
                   key={app.id}
                   label={app.name}
                   icon={appIcon(app.name)}
-                  active={preset.appId === app.id}
-                  onClick={() => updatePreset(preset.id, { appName: app.name, appId: app.id })}
+                  active={boundAppIds.includes(app.id)}
+                  onClick={() => {
+                    const next = boundAppIds.includes(app.id)
+                      ? boundAppIds.filter((id) => id !== app.id)
+                      : [...boundAppIds, app.id]
+                    updatePreset(preset.id, { appIds: next })
+                  }}
                 />
               ))}
               {/* 当前应用：只显示，不进列表 */}
@@ -185,13 +198,13 @@ export function PresetEditor({
                 <AppChip
                   label={`${currentApp.name}（当前）`}
                   icon={appIcon(currentApp.name)}
-                  active={preset.appId === currentApp.id}
-                  onClick={() =>
-                    updatePreset(preset.id, {
-                      appName: currentApp.name,
-                      appId: currentApp.id,
-                    })
-                  }
+                  active={boundAppIds.includes(currentApp.id)}
+                  onClick={() => {
+                    const next = boundAppIds.includes(currentApp.id)
+                      ? boundAppIds.filter((id) => id !== currentApp.id)
+                      : [...boundAppIds, currentApp.id]
+                    updatePreset(preset.id, { appIds: next })
+                  }}
                 />
               )}
             </div>
@@ -212,7 +225,11 @@ export function PresetEditor({
                 获取当前应用
               </button>
               <span className="text-[11px] text-text-tertiary">
-                {appList.length > 0 ? `已记录 ${appList.length} 个应用` : '还没拉过列表'}
+                {boundAppIds.length > 0
+                  ? `已绑定 ${boundAppIds.length} 个`
+                  : appList.length > 0
+                    ? `已记录 ${appList.length} 个应用`
+                    : '还没拉过列表'}
               </span>
             </div>
           </Section>
@@ -220,20 +237,30 @@ export function PresetEditor({
           {/* ---------- ① 麦克风按钮的绑定 ---------- */}
           <Section
             title="麦克风按钮"
-            hint="按下 / 松开时在电脑触发的快捷键 —— 只绑定麦克风这一颗按钮"
+            hint="只绑定麦克风这一颗按钮；三个动作互相独立"
           >
             <MagnetSlot
-              label="按下时"
+              label="点按打开时"
               magnet={pressMagnet}
               onClick={() => setPicker({ kind: 'micPress' })}
             />
             <div className="mt-2">
               <MagnetSlot
-                label="松开时"
+                label="点按关闭时"
                 magnet={releaseMagnet}
                 onClick={() => setPicker({ kind: 'micRelease' })}
               />
             </div>
+            <div className="mt-2">
+              <MagnetSlot
+                label="长按说话时"
+                magnet={holdMagnet}
+                onClick={() => setPicker({ kind: 'micHold' })}
+              />
+            </div>
+            <p className="mt-2 text-[11px] leading-relaxed text-text-tertiary">
+              「点按打开/关闭」是两次独立按键；「长按说话」按下时按住组合键，松手才松开。
+            </p>
           </Section>
 
           {/* ---------- ② 独立快捷键磁贴 ---------- */}

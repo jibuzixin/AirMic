@@ -175,7 +175,7 @@ MagnetGroup { id, name, icon, steps: magnetId[], intervalSeconds }
 **不变量**
 
 - `micPressId`（点按开）、`micReleaseId`（点按关）只能绑磁片；`micHoldId`（长按磁片）和 `micHoldGroupId`（长按磁片组）二选一。
-- 长按绑磁片组时：组里第一步按住，松手释放，剩下的步骤按 `intervalSeconds` 依次执行（在手机端发 `hotkey.down/up/execute` 实现）。
+- 长按绑磁片组时：组里第一步按住，松手释放，先等 `intervalSeconds`，剩下的步骤再按同样间隔依次执行（在手机端发 `hotkey.down/up/execute` 实现）。
 - 磁贴引用磁片**或**磁片组；磁片组按顺序执行，可重复同一个磁片。
 - 删除磁片要清掉所有引用（预案槽位、磁贴、磁片组步骤、磁片组磁贴）。
 

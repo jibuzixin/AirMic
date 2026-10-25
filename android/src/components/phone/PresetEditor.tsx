@@ -337,7 +337,7 @@ export function PresetEditor({
             </div>
             <p className="mt-2 text-[11px] leading-relaxed text-text-tertiary">
               「点按打开/关闭」是两次独立按键；「长按说话」按下时按住组合键，松手才松开。
-              长按也可以绑磁片组：第一步跟着手指按住，松手后剩下的依次执行。
+              长按也可以绑磁片组：第一步跟着手指按住，松手后等一个间隔，剩下的依次执行。
             </p>
           </Section>
 
@@ -463,7 +463,7 @@ export function PresetEditor({
               }
               groupHint={
                 picker.kind === 'micHold'
-                  ? '磁片组（第一步按住，松手后其余依次执行）'
+                  ? '磁片组（第一步按住，松手后等待间隔，其余依次执行）'
                   : undefined
               }
               onCreate={() => {

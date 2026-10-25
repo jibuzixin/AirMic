@@ -1025,11 +1025,11 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       send({ type: 'hotkey.up', combo: heldComboRef.current })
       heldComboRef.current = null
     }
-    // 长按绑定磁片组：松开第一步之后，剩下的按间隔依次执行
+    // 长按绑定磁片组：松开第一步之后，先等一个组间隔，剩下的再依次执行
     const pending = heldGroupStepsRef.current
     heldGroupStepsRef.current = null
     if (pending && pending.combos.length > 0) {
-      let delay = 0
+      let delay = pending.intervalMs
       for (const combo of pending.combos) {
         holdReleaseTimers.current.push(
           window.setTimeout(() => {

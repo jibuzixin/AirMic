@@ -6,7 +6,7 @@
 - **手机端**：Android App，Capacitor + React（复用原型 UI）+ Java 原生插件
 - **通信**：局域网，Bonjour 发现 + TCP 控制 + UDP 音频
 
-当前版本 **0.4.1**。产物：`dist/mac/AirMic-0.4.1.app`、`dist/AirMic-v0.4.1-debug.apk`。
+当前版本 **0.4.2**。产物：`dist/mac/AirMic-0.4.2.app`、`dist/AirMic-v0.4.2-debug.apk`。
 
 ## 仓库结构
 

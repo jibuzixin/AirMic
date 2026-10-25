@@ -160,7 +160,7 @@ export function PresetPage({
               ))}
             </div>
             <p className="mt-2 text-[10px] text-text-faint">
-              版本 0.3.0 · 构建 {__BUILD_TIME__}
+              版本 0.3.1 · 构建 {__BUILD_TIME__}
             </p>
           </div>
         </div>

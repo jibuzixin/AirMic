@@ -131,7 +131,7 @@ final class MenuBarController: NSObject, NSApplicationDelegate {
     private func setupPanel() {
         // 毛玻璃：和控制中心同一套材质（.popover + behindWindow）
         let effect = NSVisualEffectView()
-        effect.material = .popover
+        effect.material = .hudWindow
         effect.blendingMode = .behindWindow
         effect.state = .active
         effect.isEmphasized = true

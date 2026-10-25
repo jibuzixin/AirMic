@@ -12,9 +12,10 @@ CONFIG="${1:-release}"
 OUT_ROOT="${2:-$ROOT/dist/mac}"
 APP_NAME="AirMic"
 BUNDLE_ID="com.airmic.mac"
+VERSION="0.3.1"
 BUILD_DIR="$ROOT/mac/.build/$CONFIG"
 OUT_DIR="$OUT_ROOT"
-APP_BUNDLE="$OUT_DIR/$APP_NAME.app"
+APP_BUNDLE="$OUT_DIR/$APP_NAME-$VERSION.app"
 
 log() { printf '\033[1;34m[package]\033[0m %s\n' "$*"; }
 
@@ -41,7 +42,7 @@ cat > "$APP_BUNDLE/Contents/Info.plist" <<PLIST
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.3.0</string>
+    <string>$VERSION</string>
     <key>CFBundleVersion</key>
     <string>1</string>
     <key>LSMinimumSystemVersion</key>

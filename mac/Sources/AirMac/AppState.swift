@@ -39,8 +39,6 @@ final class AppState: ObservableObject {
 
     /// 可选的音频输出设备（面板下拉）
     @Published private(set) var devices: [AudioDevice] = []
-    /// 1kHz 测试音开关
-    @Published var testToneOn = false
     /// 辅助功能权限（定时自检，用户授权后提示会自动消失）
     @Published private(set) var accessibilityGranted = HotkeyExecutor.hasAccessibilityPermission
     /// 用户点了「去授权」后的引导状态
@@ -111,11 +109,6 @@ final class AppState: ObservableObject {
     /// 抖动缓冲
     func setBuffer(_ ms: Int) {
         server.setBufferMs(ms)
-    }
-
-    /// 1kHz 测试音
-    func setTestTone(_ enabled: Bool) {
-        server.setTestTone(enabled)
     }
 
     /// 把诊断日志复制到剪贴板（直接粘给开发看）

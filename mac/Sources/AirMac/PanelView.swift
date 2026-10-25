@@ -8,7 +8,6 @@ struct PanelView: View {
     @ObservedObject var state: AppState
     /// 内容高度变化时回调 —— 外层 NSPanel 用它做窗口高度动画
     var onHeightChange: ((CGFloat) -> Void)?
-    @State private var detailsExpanded = false
 
     /// 面板右下角显示的版本号（用来确认跑的是哪一份构建）
     private var appVersion: String {
@@ -234,87 +233,55 @@ struct PanelView: View {
     // MARK: - 详细设置
 
     private var detailsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            Button {
-                detailsExpanded.toggle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 9, weight: .bold))
-                        .rotationEffect(.degrees(detailsExpanded ? 90 : 0))
-                        .animation(.spring(response: 0.26, dampingFraction: 0.9), value: detailsExpanded)
-                    Text("详细设置")
-                        .font(.system(size: 12, weight: .medium))
-                }
-                .foregroundStyle(Theme.textSecondary)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .contentShape(Rectangle())
+        VStack(alignment: .leading, spacing: 10) {
+            Text("详细设置")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Theme.textTertiary)
+
+            statsGrid
+
+            HStack(spacing: 8) {
+                Text("抖动缓冲")
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                Slider(
+                    value: Binding(
+                        get: { Double(state.bufferMs) },
+                        set: { state.setBuffer(Int($0)) }
+                    ),
+                    in: 20...300,
+                    step: 10
+                )
+                .controlSize(.small)
+                Text("\(state.bufferMs)ms")
+                    .tabularNumbers()
+                    .font(.system(size: 11))
+                    .foregroundStyle(Theme.textSecondary)
+                    .frame(width: 42, alignment: .trailing)
             }
-            .buttonStyle(.plain)
 
-            if detailsExpanded {
-                VStack(alignment: .leading, spacing: 10) {
-                    statsGrid
-
-                    HStack(spacing: 8) {
-                        Text("抖动缓冲")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.textSecondary)
-                        Slider(
-                            value: Binding(
-                                get: { Double(state.bufferMs) },
-                                set: { state.setBuffer(Int($0)) }
-                            ),
-                            in: 20...300,
-                            step: 10
-                        )
-                        .controlSize(.small)
-                        Text("\(state.bufferMs)ms")
-                            .tabularNumbers()
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.textSecondary)
-                            .frame(width: 42, alignment: .trailing)
-                    }
-
-                    Toggle(isOn: Binding(
-                        get: { state.testToneOn },
-                        set: {
-                            state.testToneOn = $0
-                            state.setTestTone($0)
-                        }
-                    )) {
-                        Text("1kHz 测试音")
-                            .font(.system(size: 11))
-                            .foregroundStyle(Theme.textSecondary)
-                    }
-                    .toggleStyle(.switch)
-                    .controlSize(.mini)
-
-                    // 排查用：把现场数据一键交付
-                    HStack(spacing: 8) {
-                        Button(state.diagnosticsCopied ? "已复制" : "复制诊断日志") {
-                            state.copyDiagnostics()
-                        }
-                        .buttonStyle(PanelActionButtonStyle(isPrimary: false))
-
-                        Button("打开日志文件夹") {
-                            state.openLogFolder()
-                        }
-                        .buttonStyle(PanelActionButtonStyle(isPrimary: false))
-
-                        Button("清空") {
-                            state.clearDiagnostics()
-                        }
-                        .buttonStyle(PanelActionButtonStyle(isPrimary: false))
-
-                        Spacer(minLength: 0)
-                    }
+            // 排查用：把现场数据一键交付
+            HStack(spacing: 8) {
+                Button(state.diagnosticsCopied ? "已复制" : "复制诊断日志") {
+                    state.copyDiagnostics()
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+                .buttonStyle(PanelActionButtonStyle(isPrimary: false))
+
+                Button("打开日志文件夹") {
+                    state.openLogFolder()
+                }
+                .buttonStyle(PanelActionButtonStyle(isPrimary: false))
+
+                Button("清空") {
+                    state.clearDiagnostics()
+                }
+                .buttonStyle(PanelActionButtonStyle(isPrimary: false))
+
+                Spacer(minLength: 0)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 
     /// 四个统计指标。拿不到真实数据就显示 `[--]` —— **不编数字**。

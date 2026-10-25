@@ -38,16 +38,29 @@ public struct HotkeyExecutor {
         }
 
         // 先把焦点交回前台应用
+        //
+        // ⚠️ activate 要回主线程调用，且它本身是异步的 —— 等它真的切过去再发按键，
+        // 否则按键还是会落到 AirMic 自己身上。
         if let target {
-            target.activate(options: [.activateIgnoringOtherApps])
-            // 给系统一点时间切过去（activate 是异步的）
-            Thread.sleep(forTimeInterval: 0.05)
+            if Thread.isMainThread {
+                target.activate(options: [.activateIgnoringOtherApps])
+            } else {
+                DispatchQueue.main.async {
+                    target.activate(options: [.activateIgnoringOtherApps])
+                }
+            }
+            let deadline = Date().addingTimeInterval(0.4)
+            while !target.isActive && Date() < deadline {
+                Thread.sleep(forTimeInterval: 0.02)
+            }
+            Thread.sleep(forTimeInterval: 0.03)
         }
 
         // 鼠标键与键盘主键互斥
         if let mouse = combo.last, mouse.hasPrefix("mouse") || mouse.hasPrefix("wheel") {
             return executeMouse(combo: combo)
         }
+        Log.info("执行快捷键：\(combo.joined(separator: "+")) → \(target?.localizedName ?? "当前焦点应用")")
         return executeKeyboard(combo: combo)
     }
 
@@ -78,7 +91,6 @@ public struct HotkeyExecutor {
         up?.flags = flags
         down?.post(tap: .cghidEventTap)
         up?.post(tap: .cghidEventTap)
-        Log.info("执行快捷键：\(combo.joined(separator: "+"))")
         return true
     }
 

@@ -49,7 +49,7 @@ case "serve":
             print("1kHz 测试音已开启（从电脑的输出设备出声）")
         } else if arguments.contains("--audio") {
             server.toggleRecording()
-            print("音频管线已启动（UDP \(AudioReceiver.defaultPort)）")
+            print("音频管线已启动（UDP \(AudioReceiver.resolvedPort)）")
             // 每秒打印一次统计
             Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
                 let stats = server.stats

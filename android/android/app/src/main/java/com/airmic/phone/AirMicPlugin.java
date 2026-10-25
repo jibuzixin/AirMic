@@ -3,6 +3,7 @@ package com.airmic.phone;
 import android.Manifest;
 import android.content.Context;
 import android.net.wifi.WifiManager;
+import android.os.Build;
 import android.util.Log;
 
 import com.getcapacitor.JSObject;
@@ -12,6 +13,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 import org.json.JSONObject;
 
@@ -26,6 +28,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
     name = "AirMic",
     permissions = {
         @Permission(alias = "recordAudio", strings = { Manifest.permission.RECORD_AUDIO }),
+        // Android 13+ 扫局域网（mDNS）需要这个权限；老版本上没有这个权限，会被忽略
+        @Permission(alias = "nearbyWifi", strings = { Manifest.permission.NEARBY_WIFI_DEVICES }),
     }
 )
 public class AirMicPlugin extends Plugin {
@@ -106,6 +110,21 @@ public class AirMicPlugin extends Plugin {
 
     @PluginMethod
     public void scan(PluginCall call) {
+        // Android 13+：不申请「附近的设备」权限，mDNS 扫描会直接失败（扫不到电脑）
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            && getPermissionState("nearbyWifi") != PermissionState.GRANTED) {
+            requestPermissionForAlias("nearbyWifi", call, "afterNearbyPermission");
+            return;
+        }
+        doScan(call);
+    }
+
+    @PermissionCallback
+    private void afterNearbyPermission(PluginCall call) {
+        doScan(call);
+    }
+
+    private void doScan(PluginCall call) {
         acquireMulticastLock();
         scanner.start();
 

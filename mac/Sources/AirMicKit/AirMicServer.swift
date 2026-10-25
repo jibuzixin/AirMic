@@ -77,6 +77,8 @@ public final class AirMicServer: ObservableObject {
 
     /// 这次收音是什么时候开始的（没收到包时用它算静默）
     private var recordingStartedAt: Date?
+    /// 收音是被用户手动关掉的吗（静默自动关 = false）
+    private var recordingStoppedByUser = false
 
     public init(deviceId: String = HostInfo.stableId) {
         self.deviceId = deviceId
@@ -208,17 +210,22 @@ public final class AirMicServer: ObservableObject {
 
     /// 开始 / 停止收音（面板主按钮）
     public func toggleRecording() {
-        setRecording(!isRecording)
+        setRecording(!isRecording, byUser: true)
     }
 
     /// 设定收音开关（自动开麦 / 静默关闭都走这里）
-    public func setRecording(_ on: Bool) {
+    ///
+    /// - Parameter byUser: true = 用户手动点按钮关的；false = 静默自动关的。
+    ///   手机端据此决定「要不要提醒电脑没有在收音」。
+    public func setRecording(_ on: Bool, byUser: Bool = false) {
         guard isRecording != on else { return }
         isRecording = on
         if on {
+            recordingStoppedByUser = false
             recordingStartedAt = Date()
             startAudioPipeline()
         } else {
+            recordingStoppedByUser = byUser
             recordingStartedAt = nil
             stopAudioPipeline()
         }
@@ -632,7 +639,8 @@ public final class AirMicServer: ObservableObject {
             foregroundApp: foregroundApp.name,
             foregroundBundleId: foregroundApp.bundleId,
             outputDeviceId: config.outputDeviceId,
-            bufferMs: config.bufferMs
+            bufferMs: config.bufferMs,
+            stoppedByUser: recordingStoppedByUser
         )
     }
 

@@ -29,7 +29,7 @@ export function MagnetEditor({
   onSave: (magnet: Omit<HotkeyMagnet, 'id'>) => void
   onClose: () => void
 }) {
-  useBackHandler(onClose)
+  useBackHandler(onClose, { priority: 30 })
 
   const [label, setLabel] = useState(magnet?.label ?? '')
   const [icon, setIcon] = useState(magnet?.icon ?? 'Command')

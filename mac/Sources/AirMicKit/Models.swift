@@ -258,19 +258,23 @@ public struct ServerState: Codable, Equatable {
     public var foregroundBundleId: String
     public var outputDeviceId: String
     public var bufferMs: Int
+    /// 收音是不是被用户手动关掉的（false = 静默自动关的）
+    public var stoppedByUser: Bool
 
     public init(
         recording: Bool,
         foregroundApp: String,
         foregroundBundleId: String,
         outputDeviceId: String,
-        bufferMs: Int
+        bufferMs: Int,
+        stoppedByUser: Bool = false
     ) {
         self.recording = recording
         self.foregroundApp = foregroundApp
         self.foregroundBundleId = foregroundBundleId
         self.outputDeviceId = outputDeviceId
         self.bufferMs = bufferMs
+        self.stoppedByUser = stoppedByUser
     }
 }
 

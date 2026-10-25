@@ -35,6 +35,7 @@ export function MicPage({
     micMode,
     paired,
     connected,
+    shouldWarnServerIdle,
     pairedDevice,
     foregroundApp,
     presetNotice,
@@ -171,12 +172,14 @@ export function MicPage({
   }, [])
 
   const notifyCaptureBlocked = useCallback(() => {
-    if (serverRunning) return
+    // 只有「用户手动关掉了电脑端收音」才提醒；
+    // 静默自动关的情况下电脑会自动恢复，不该吓唬用户
+    if (!shouldWarnServerIdle) return
     vibrate()
     setCaptureBlocked(true)
     if (blockedTimer.current) window.clearTimeout(blockedTimer.current)
     blockedTimer.current = window.setTimeout(() => setCaptureBlocked(false), 3000)
-  }, [serverRunning])
+  }, [shouldWarnServerIdle])
 
   /** 点按 = 常开收音；只有从 idle 切进来才算「开始收音」 */
   const handleToggleContinuous = useCallback(() => {

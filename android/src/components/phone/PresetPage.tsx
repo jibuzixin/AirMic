@@ -1,7 +1,14 @@
-import { createElement } from 'react'
+import { createElement, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { ChevronLeft, Command, Layers, ChevronRight, Plus, Unplug } from 'lucide-react'
-import { DragToConfirm } from '@/components/ui/drag-to-confirm'
+import {
+  ChevronLeft,
+  ChevronRight,
+  Layers,
+  Plus,
+  Search,
+  Settings,
+  X,
+} from 'lucide-react'
 import { useAirmic } from '@/lib/airmic-store'
 import { useBackHandler } from '@/lib/back-stack'
 import { springSnappy } from '@/lib/motion'
@@ -11,40 +18,36 @@ import { appIcon } from './icons'
 /**
  * 手机端预案管理页
  * ------------------------------------------------------------
- * 需求说明书 §3.4：
- *   列出所有预案：名称 / 绑定应用 / 快捷键数量
- *   默认预案有明确标识
- *   新建 / 编辑 / 删除
+ * 这一页只放「预案」：列表 + 搜索 + 新建。
+ * 磁片库、磁片组、省电、外观、连接管理都移到设置页。
  *
  * ⚠️ 编辑抽屉由 PhoneShell 统一挂载：
  *   这里只负责「点哪套预案 → 通知外层打开哪套的抽屉」。
- *   抽屉拿到的必须是 store 里的**实时对象** ——
- *   存对象快照的话，抽屉里改 store、界面显示旧快照 —— 点了没反应。
  */
 export function PresetPage({
   onBack,
   onEditPreset,
-  onOpenMagnets,
+  onOpenSettings,
 }: {
   onBack: () => void
   onEditPreset: (presetId: string) => void
-  onOpenMagnets: () => void
+  onOpenSettings: () => void
 }) {
   useBackHandler(onBack)
 
-  const {
-    presets,
-    magnets,
-    activePresetId,
-    createPreset,
-    disconnect,
-    unpair,
-    pairedDevice,
-    themeMode,
-    setThemeMode,
-    silenceSeconds,
-    setSilenceSeconds,
-  } = useAirmic()
+  const { presets, activePresetId, createPreset } = useAirmic()
+  const [query, setQuery] = useState('')
+
+  const filtered = useMemo(() => {
+    const keyword = query.trim().toLowerCase()
+    if (!keyword) return presets
+    return presets.filter((preset) => {
+      if (preset.name.toLowerCase().includes(keyword)) return true
+      return (preset.appIds ?? []).some((id) =>
+        id.toLowerCase().includes(keyword),
+      )
+    })
+  }, [presets, query])
 
   return (
     <div className="flex h-full flex-col">
@@ -59,60 +62,103 @@ export function PresetPage({
           <ChevronLeft size={17} strokeWidth={1.8} />
         </button>
         <h1 className="text-[15px] font-semibold text-text-primary">预案</h1>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onOpenSettings}
+          aria-label="设置"
+          className="grid size-11 shrink-0 place-items-center rounded-[10px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary active:scale-95"
+        >
+          <Settings size={16} strokeWidth={1.8} />
+        </button>
       </header>
+
+      {/* ---------- 搜索 ---------- */}
+      <div className="shrink-0 px-4 pb-2">
+        <div className="flex h-9 items-center gap-2 rounded-[10px] border border-border-subtle bg-surface-1 px-2.5">
+          <Search size={13} strokeWidth={1.8} className="text-text-tertiary" />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="搜索预案或应用"
+            aria-label="搜索预案"
+            className="min-w-0 flex-1 bg-transparent text-[12px] text-text-primary outline-none placeholder:text-text-faint"
+          />
+          {query && (
+            <button
+              type="button"
+              onClick={() => setQuery('')}
+              aria-label="清除搜索"
+              className="grid size-6 place-items-center rounded-full text-text-tertiary"
+            >
+              <X size={12} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+      </div>
 
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-4">
         {/* ---------- 预案列表 ---------- */}
-        <ul className="flex flex-col gap-2">
-          {presets.map((preset) => (
-            <li key={preset.id}>
-              <motion.button
-                type="button"
-                onClick={() => onEditPreset(preset.id)}
-                whileTap={{ scale: 0.985 }}
-                transition={springSnappy}
-                className="flex w-full items-center gap-3 rounded-xl border border-border-subtle bg-surface-1 px-3 py-3 text-left transition-colors hover:bg-surface-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2">
-                    <span className="truncate text-[13px] font-medium text-text-primary">
-                      {preset.name}
-                    </span>
-                    {preset.isDefault && (
-                      <span className="shrink-0 rounded-full bg-surface-3 px-1.5 py-0.5 text-[9px] text-text-tertiary">
-                        默认
+        {filtered.length === 0 ? (
+          <p className="mt-8 text-center text-[12px] text-text-tertiary">
+            {query ? '没有匹配的预案' : '还没有预案'}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {filtered.map((preset) => (
+              <li key={preset.id}>
+                <motion.button
+                  type="button"
+                  onClick={() => onEditPreset(preset.id)}
+                  whileTap={{ scale: 0.985 }}
+                  transition={springSnappy}
+                  className="flex w-full items-center gap-3 rounded-xl border border-border-subtle bg-surface-1 px-3 py-3 text-left transition-colors hover:bg-surface-2"
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="truncate text-[13px] font-medium text-text-primary">
+                        {preset.name}
                       </span>
-                    )}
-                    {preset.id === activePresetId && (
-                      <span
-                        className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px]"
-                        style={{
-                          background: 'var(--color-amber-accent-muted)',
-                          color: 'var(--color-amber-accent)',
-                        }}
-                      >
-                        使用中
-                      </span>
-                    )}
-                  </div>
+                      {preset.isDefault && (
+                        <span className="shrink-0 rounded-full bg-surface-3 px-1.5 py-0.5 text-[9px] text-text-tertiary">
+                          默认
+                        </span>
+                      )}
+                      {preset.id === activePresetId && (
+                        <span
+                          className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px]"
+                          style={{
+                            background: 'var(--color-amber-accent-muted)',
+                            color: 'var(--color-amber-accent)',
+                          }}
+                        >
+                          使用中
+                        </span>
+                      )}
+                    </div>
 
-                  <div className="mt-1 flex items-center gap-1.5 text-[11px] text-text-tertiary">
-                    <AppLabel appIds={preset.appIds ?? []} appName={preset.appName} />
-                    <span className="text-text-faint">·</span>
-                    <span className="tabular">
-                      麦克风 {countMicBindings(preset)} · 磁贴 {preset.tiles.length}
-                    </span>
+                    <div className="mt-1 flex items-center gap-1.5 text-[11px] text-text-tertiary">
+                      <AppLabel
+                        appIds={preset.appIds ?? []}
+                        appName={preset.appName}
+                      />
+                      <span className="text-text-faint">·</span>
+                      <span className="tabular">
+                        麦克风 {countMicBindings(preset)} · 磁贴{' '}
+                        {preset.tiles.length}
+                      </span>
+                    </div>
                   </div>
-                </div>
-                <ChevronRight
-                  size={15}
-                  strokeWidth={1.7}
-                  className="shrink-0 text-text-faint"
-                />
-              </motion.button>
-            </li>
-          ))}
-        </ul>
+                  <ChevronRight
+                    size={15}
+                    strokeWidth={1.7}
+                    className="shrink-0 text-text-faint"
+                  />
+                </motion.button>
+              </li>
+            ))}
+          </ul>
+        )}
 
         {/* ---------- 新建 ---------- */}
         <button
@@ -123,126 +169,7 @@ export function PresetPage({
           <Plus size={14} strokeWidth={1.8} />
           新建预案
         </button>
-
-        {/* ---------- 磁片库 ---------- */}
-        <button
-          type="button"
-          onClick={onOpenMagnets}
-          className="mt-3 flex w-full items-center gap-2 rounded-xl border border-border-subtle bg-surface-1 px-3 py-3 text-left transition-colors hover:bg-surface-2"
-        >
-          <Command size={15} strokeWidth={1.8} className="text-text-secondary" />
-          <span className="flex-1 text-[12px] text-text-primary">磁片库</span>
-          <span className="tabular text-[11px] text-text-tertiary">
-            {magnets.length} 个
-          </span>
-          <ChevronRight size={14} strokeWidth={1.8} className="text-text-tertiary" />
-        </button>
-
-        {/* ---------- 省电 ---------- */}
-        <div className="mt-6">
-          <div className="rounded-xl border border-border-subtle bg-surface-1 p-3">
-            <p className="text-[11px] text-text-tertiary">省电</p>
-            <div className="mt-2 flex items-center justify-between gap-3">
-              <span className="text-[12px] text-text-secondary">
-                静默自动关闭麦克风
-              </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  aria-label="减少静默时间"
-                  onClick={() =>
-                    setSilenceSeconds(Math.max(0, silenceSeconds - 5))
-                  }
-                  className="grid size-8 place-items-center rounded-[8px] border border-border-subtle text-[14px] text-text-secondary active:scale-95"
-                >
-                  −
-                </button>
-                <span className="tabular w-12 text-center text-[12px] text-text-primary">
-                  {silenceSeconds === 0 ? '关闭' : `${silenceSeconds}s`}
-                </span>
-                <button
-                  type="button"
-                  aria-label="增加静默时间"
-                  onClick={() =>
-                    setSilenceSeconds(Math.min(120, silenceSeconds + 5))
-                  }
-                  className="grid size-8 place-items-center rounded-[8px] border border-border-subtle text-[14px] text-text-secondary active:scale-95"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-            <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
-              常开收音时，超过这么久没有声音就自动关闭。
-            </p>
-          </div>
-        </div>
-
-        {/* ---------- 外观 ---------- */}
-        <div className="mt-6">
-          <div className="rounded-xl border border-border-subtle bg-surface-1 p-3">
-            <p className="text-[11px] text-text-tertiary">外观</p>
-            <div className="mt-2 flex gap-2">
-              {(
-                [
-                  { id: 'system', label: '跟随系统' },
-                  { id: 'light', label: '浅色' },
-                  { id: 'dark', label: '深色' },
-                ] as const
-              ).map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setThemeMode(option.id)}
-                  className={
-                    themeMode === option.id
-                      ? 'flex-1 rounded-[10px] border border-border-strong bg-surface-3 py-1.5 text-[12px] text-text-primary'
-                      : 'flex-1 rounded-[10px] border border-border-subtle bg-surface-2 py-1.5 text-[12px] text-text-secondary'
-                  }
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-            <p className="mt-2 text-[10px] text-text-faint">
-              版本 0.3.3 · 构建 {__BUILD_TIME__}
-            </p>
-          </div>
-        </div>
-
-        {/* ---------- 连接管理 ---------- */}
-        <div className="mt-auto pt-6">
-          <div className="rounded-xl border border-border-subtle bg-surface-1 p-3">
-            <p className="text-[11px] text-text-tertiary">
-              当前连接
-              <span className="ml-1.5 text-text-secondary">
-                {pairedDevice?.name ?? '未连接'}
-              </span>
-            </p>
-
-            <div className="mt-3 flex flex-col gap-2">
-              <button
-                type="button"
-                onClick={disconnect}
-                className="flex h-9 items-center justify-center gap-1.5 rounded-[10px] border border-border-subtle text-[12px] text-text-secondary transition-colors hover:bg-surface-2 hover:text-text-primary"
-              >
-                <Unplug size={13} strokeWidth={1.8} />
-                断开连接
-              </button>
-
-              <DragToConfirm
-                label="拖动解绑设备"
-                confirmedLabel="已解绑"
-                actionType="delete"
-                variant="danger"
-                size="sm"
-                onConfirm={unpair}
-              />
-            </div>
-          </div>
-        </div>
       </div>
-
     </div>
   )
 }
@@ -273,7 +200,6 @@ function AppLabel({
   }
   if (count === 1) {
     const id = appIds[0]
-    // id 通常是 bundle id，显示时取最后一段更可读
     const label = appName || id.split('.').pop() || id
     return (
       <span className="flex items-center gap-1 text-text-secondary">

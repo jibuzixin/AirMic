@@ -45,7 +45,7 @@ export function PresetEditor({
   preset: Preset
   onClose: () => void
 }) {
-  useBackHandler(onClose)
+  useBackHandler(onClose, { priority: 10 })
 
   const {
     magnets,

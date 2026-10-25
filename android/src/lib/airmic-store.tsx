@@ -164,6 +164,10 @@ export type AirmicStore = {
   remoteError: string | null
   /** 是否真正连着电脑（不是「配对过」） */
   connected: boolean
+  /** 电脑端的收音是用户手动关的吗（false = 静默自动关） */
+  serverStoppedByUser: boolean
+  /** 是否需要提醒「电脑端没有在收音」 */
+  shouldWarnServerIdle: boolean
   /** 静默自动关麦（秒，0 = 关） */
   silenceSeconds: number
   /** 静默自动关麦的提示 */
@@ -268,6 +272,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   )
   /** 真正的连接状态（paired 只是「配对过」） */
   const [connected, setConnected] = useState(false)
+  /** 电脑端的收音是用户手动关的吗（false = 静默自动关） */
+  const [serverStoppedByUser, setServerStoppedByUser] = useState(true)
   const [knownDevices, setKnownDevices] = useState<Device[]>([])
   const [devices, setDevices] = useState<Device[]>([])
   const [scanning, setScanning] = useState(false)
@@ -365,6 +371,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   /** 最后一次检测到有效声音的时间（静默检测用） */
   const lastLoudAtRef = useRef(Date.now())
+  /** 断线后回设备页的延时器 */
+  const disconnectTimerRef = useRef<number | null>(null)
 
   /** 主动重连（回到前台、连接断开时用） */
   const reconnect = useCallback(() => {
@@ -489,7 +497,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         case 'welcome': {
           const required = message.pairingRequired === true
           setPaired(!required)
-          if (!required) setConnected(true)
+          if (!required) {
+            setConnected(true)
+            if (disconnectTimerRef.current) {
+              window.clearTimeout(disconnectTimerRef.current)
+              disconnectTimerRef.current = null
+            }
+          }
           // 需要配对、而且是用户刚点了这台设备 → 这时候才发配对请求
           if (required && pairingDevice) {
             setPairingRequest({
@@ -599,9 +613,22 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
     transport.onConnection((state) => {
       setConnected(state.connected)
-      if (!state.connected) {
-        if (state.error) setConnectionError(state.error)
+      if (state.connected) {
+        if (disconnectTimerRef.current) {
+          window.clearTimeout(disconnectTimerRef.current)
+          disconnectTimerRef.current = null
+        }
+        return
       }
+      if (state.error) setConnectionError(state.error)
+      // 电脑端退出 / 连接断开：等 3 秒还没恢复就退回设备页（重新扫描）
+      if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current)
+      disconnectTimerRef.current = window.setTimeout(() => {
+        disconnectTimerRef.current = null
+        setPaired(false)
+        setMicMode('idle')
+        stopCapture()
+      }, 3000)
     })
   }, [
     bufferMs,
@@ -619,6 +646,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const applyServerState = useCallback((server: any) => {
     // serverRunning = 电脑端当前有没有在收音（手机据此提示「声音传不过去」）
     if (typeof server.recording === 'boolean') setServerRunning(server.recording)
+    if (typeof server.stoppedByUser === 'boolean') {
+      setServerStoppedByUser(server.stoppedByUser)
+    }
     if (server.foregroundApp) {
       setForegroundAppState({
         name: server.foregroundApp,
@@ -788,15 +818,18 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
    * 电脑端没有在收音时，手机开始收音要**震动 + 提示**（硬约束 15）。
    * 震动用 navigator.vibrate —— iOS 没有这个 API，必须做保护。
    */
+  /** 需不需要提醒「电脑端没有在收音」：只有用户手动关掉时才提醒 */
+  const shouldWarnServerIdle = !serverRunning && serverStoppedByUser
+
   const warnIfServerIdle = useCallback(() => {
-    if (serverRunning) return
+    if (serverRunning || !serverStoppedByUser) return
     setMicBlockedNotice('电脑端没有在收音，声音传不过去')
     try {
       navigator.vibrate?.([120, 60, 120])
     } catch {
       /* 不支持震动就算了，视觉提示才是主要渠道 */
     }
-  }, [serverRunning])
+  }, [serverRunning, serverStoppedByUser])
 
   /**
    * 当前预案里麦克风按钮绑定的磁片
@@ -1158,6 +1191,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       remoteError,
       micLevel,
       connected,
+      serverStoppedByUser,
+      shouldWarnServerIdle,
       silenceSeconds,
       micAutoStopNotice,
       themeMode,
@@ -1229,6 +1264,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       remoteError,
       micLevel,
       connected,
+      serverStoppedByUser,
+      shouldWarnServerIdle,
       silenceSeconds,
       micAutoStopNotice,
       themeMode,

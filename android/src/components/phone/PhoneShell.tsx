@@ -6,6 +6,8 @@ import { DevicePage } from './DevicePage'
 import { MicPage } from './MicPage'
 import { PresetPage } from './PresetPage'
 import { MagnetLibraryPage } from './MagnetLibraryPage'
+import { MagnetGroupPage } from './MagnetGroupPage'
+import { SettingsPage } from './SettingsPage'
 import { PresetEditor } from './PresetEditor'
 import { PhoneOverlayContext } from './PhoneOverlay'
 
@@ -29,7 +31,9 @@ export function PhoneShell({
   mode?: 'frame' | 'full'
 }) {
   const { paired, presets, activePresetId } = useAirmic()
-  const [page, setPage] = useState<'mic' | 'preset' | 'magnets'>('mic')
+  const [page, setPage] = useState<
+    'mic' | 'preset' | 'settings' | 'magnets' | 'groups'
+  >('mic')
   /** 正在编辑的预案 id；null = 抽屉关闭 */
   const [editingId, setEditingId] = useState<string | null>(null)
   /** 二级弹层（磁片选择器 / 磁片编辑器）的挂载点 */
@@ -65,10 +69,18 @@ export function PhoneShell({
                 <PresetPage
                   onBack={() => setPage('mic')}
                   onEditPreset={(id) => setEditingId(id)}
-                  onOpenMagnets={() => setPage('magnets')}
+                  onOpenSettings={() => setPage('settings')}
                 />
+              ) : page === 'settings' ? (
+                <SettingsPage
+                  onBack={() => setPage('preset')}
+                  onOpenMagnets={() => setPage('magnets')}
+                  onOpenGroups={() => setPage('groups')}
+                />
+              ) : page === 'magnets' ? (
+                <MagnetLibraryPage onBack={() => setPage('settings')} />
               ) : (
-                <MagnetLibraryPage onBack={() => setPage('preset')} />
+                <MagnetGroupPage onBack={() => setPage('settings')} />
               )}
             </div>
 
@@ -126,10 +138,18 @@ export function PhoneShell({
             <PresetPage
               onBack={() => setPage('mic')}
               onEditPreset={(id) => setEditingId(id)}
-              onOpenMagnets={() => setPage('magnets')}
+              onOpenSettings={() => setPage('settings')}
             />
+          ) : page === 'settings' ? (
+            <SettingsPage
+              onBack={() => setPage('preset')}
+              onOpenMagnets={() => setPage('magnets')}
+              onOpenGroups={() => setPage('groups')}
+            />
+          ) : page === 'magnets' ? (
+            <MagnetLibraryPage onBack={() => setPage('settings')} />
           ) : (
-            <MagnetLibraryPage onBack={() => setPage('preset')} />
+            <MagnetGroupPage onBack={() => setPage('settings')} />
           )}
         </div>
 

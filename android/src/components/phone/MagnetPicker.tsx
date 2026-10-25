@@ -32,6 +32,8 @@ export function MagnetPicker({
   onCreate: () => void
   onClose: () => void
 }) {
+  useBackHandler(onClose, { priority: 20 })
+
   const overlay = usePhoneOverlay()
   if (!overlay) return null
 

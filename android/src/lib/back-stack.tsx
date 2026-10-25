@@ -18,7 +18,7 @@ import { Capacitor } from '@capacitor/core'
  * 页面 / 弹层打开时注册一个处理器；按返回键时执行**最上层**的那个。
  * 栈空了才最小化 App（不退出 —— 保留连接和状态）。
  */
-type Handler = () => void
+type Handler = { run: () => void; priority: number }
 
 const BackStackContext = createContext<{
   push: (handler: Handler) => () => void
@@ -29,8 +29,12 @@ export function BackStackProvider({ children }: { children: ReactNode }) {
 
   const push = useCallback((handler: Handler) => {
     handlers.current.push(handler)
+    // 优先级高的永远在上面（页面 0 < 抽屉 10 < 选择器 20 < 编辑器 30）。
+    // ⚠️ 不能只靠注册顺序：React 子组件的 effect 先于父组件执行，
+    // 父级抽屉反而会排在子级后面，按返回就会先关外层、内层闪现消失。
+    handlers.current.sort((a, b) => a.priority - b.priority)
     return () => {
-      const index = handlers.current.lastIndexOf(handler)
+      const index = handlers.current.indexOf(handler)
       if (index >= 0) handlers.current.splice(index, 1)
     }
   }, [])
@@ -41,7 +45,7 @@ export function BackStackProvider({ children }: { children: ReactNode }) {
     void App.addListener('backButton', () => {
       const handler = handlers.current[handlers.current.length - 1]
       if (handler) {
-        handler()
+        handler.run()
       } else {
         // 已经在最外层：退到桌面但保留进程（回来不用重新扫描）
         void App.minimizeApp()
@@ -58,14 +62,23 @@ export function BackStackProvider({ children }: { children: ReactNode }) {
   )
 }
 
-/** 注册返回键处理器（页面 / 弹层打开时调用） */
-export function useBackHandler(handler: Handler, enabled = true) {
+/**
+ * 注册返回键处理器（页面 / 弹层打开时调用）
+ *
+ * priority：页面 0（默认）、抽屉 10、选择器 20、编辑器 30。
+ * 数字越大越先被返回键处理。
+ */
+export function useBackHandler(
+  handler: () => void,
+  options: { enabled?: boolean; priority?: number } = {},
+) {
+  const { enabled = true, priority = 0 } = options
   const context = useContext(BackStackContext)
   const ref = useRef(handler)
   ref.current = handler
 
   useEffect(() => {
     if (!context || !enabled) return
-    return context.push(() => ref.current())
-  }, [context, enabled])
+    return context.push({ run: () => ref.current(), priority })
+  }, [context, enabled, priority])
 }

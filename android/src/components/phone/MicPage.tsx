@@ -33,6 +33,7 @@ export function MicPage({
 }) {
   const {
     micMode,
+    paired,
     pairedDevice,
     foregroundApp,
     presetNotice,
@@ -195,11 +196,21 @@ export function MicPage({
           <div className="flex min-w-0 items-center gap-2">
             <span
               className="size-1.5 shrink-0 rounded-full"
-              style={{ background: 'var(--color-connected)' }}
-              aria-label="已连接"
+              style={{
+                background: paired
+                  ? 'var(--color-connected)'
+                  : 'var(--color-text-tertiary)',
+              }}
+              aria-label={paired ? '已连接' : '未连接'}
             />
-            <span className="truncate text-[13px] font-medium text-text-primary">
-              {pairedDevice?.name ?? '未连接'}
+            <span
+              className={
+                paired
+                  ? 'truncate text-[13px] font-medium text-text-primary'
+                  : 'truncate text-[13px] font-medium text-text-tertiary'
+              }
+            >
+              {pairedDevice?.name ?? (paired ? '已连接' : '未连接')}
             </span>
             <span className="tabular shrink-0 text-[11px] text-text-tertiary">
               {foregroundApp.name}

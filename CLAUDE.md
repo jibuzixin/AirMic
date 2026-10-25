@@ -68,6 +68,7 @@ airmic/
 │   │   ├── VirtualAudioWriter.swift CoreAudio IOProc，把 PCM 写进 BlackHole
 │   │   ├── AudioDevices.swift       音频设备枚举 / 默认设备选择
 │   │   ├── HotkeyExecutor.swift     CGEvent 快捷键（tap / press / repeat / release）
+│   │   ├── TextPaster.swift         文本磁片：剪贴板 + ⌘V，粘完还原原剪贴板
 │   │   ├── ForegroundAppWatcher.swift 前台应用监听（NSWorkspace）
 │   │   ├── PairingStore.swift       已配对设备 + 长期 token（文件存储）
 │   │   ├── ConfigStore.swift        磁片/预案配置（Application Support）
@@ -161,12 +162,23 @@ airmic/
 前台应用变化 → 按 `preset.appIds` 匹配 → 切换并广播 `preset.active` → 手机顶部常驻条更新。
 一个应用只属于一个预案（手机端 `updatePreset` 强制）。
 
+### 4.8 文本磁片
+
+磁片有两种：`text` 非空 = **文本磁片**（存一段提前编辑好的文字），否则是快捷键磁片。
+
+- 手机端发 `text.paste`；电脑端 `TextPaster` 把文字写入剪贴板 → 激活前台应用 → 发 ⌘V
+  → 1 秒后（剪贴板仍是这段文字时）还原用户原来的剪贴板。
+- 用剪贴板而不用 Unicode 注入：`CGEvent.keyboardSetUnicodeString` 会被 Electron / Flutter /
+  远程桌面等直接丢掉；⌘V 是所有应用都认的路径。
+- 没有键可以「按住」，所以文本磁片在长按位置就是**按下时粘贴一次**。
+  磁片组绑到长按时，组里**第一个有组合键的步骤**才是按住的那一个。
+
 ---
 
 ## 5. 数据模型（两端一致）
 
 ```ts
-Magnet      { id, label, icon, modifiers[], key?|mouse? }   // icon 可为 custom:<key>
+Magnet      { id, label, icon, modifiers[], key?|mouse?, text? }  // icon 可为 custom:<key>；text 非空 = 文本磁片
 Preset      { id, name, appIds[], micPressId?, micReleaseId?, micHoldId?, micHoldGroupId?, tiles[], isDefault? }
 Tile        { id, magnetId? | groupId? }                    // 二选一
 MagnetGroup { id, name, icon, steps: magnetId[], intervalSeconds }
@@ -175,7 +187,7 @@ MagnetGroup { id, name, icon, steps: magnetId[], intervalSeconds }
 **不变量**
 
 - `micPressId`（点按开）、`micReleaseId`（点按关）只能绑磁片；`micHoldId`（长按磁片）和 `micHoldGroupId`（长按磁片组）二选一。
-- 长按绑磁片组时：组里第一步按住，松手释放，先等 `intervalSeconds`，剩下的步骤再按同样间隔依次执行（在手机端发 `hotkey.down/up/execute` 实现）。
+- 长按绑磁片组时：组里第一个**有组合键**的步骤按住，松手释放，先等 `intervalSeconds`，剩下的步骤再按同样间隔依次执行（在手机端发 `hotkey.down/up/execute` 实现）。文本步骤没有「按住」语义，按下时粘贴。
 - 磁贴引用磁片**或**磁片组；磁片组按顺序执行，可重复同一个磁片。
 - 删除磁片要清掉所有引用（预案槽位、磁贴、磁片组步骤、磁片组磁贴）。
 
@@ -214,6 +226,7 @@ cd mac
 ```bash
 node tools/fake-phone.mjs --pair            # 假手机：配对
 node tools/fake-phone.mjs --hotkey cmd+t    # 假手机：快捷键
+node tools/fake-phone.mjs --text "你好"      # 假手机：文本磁片（text.paste）
 AIRMIC_PORT=47482 node tools/fake-phone.mjs # 换端口（避免和正在跑的 App 冲突）
 ```
 
@@ -236,6 +249,7 @@ AIRMIC_PORT=47482 node tools/fake-phone.mjs # 换端口（避免和正在跑的 
 | 电脑端面板展开/收起内容叠在一起 | `MenuBarExtra` 自己在改窗口高度 | 用 NSPanel，高度只由我们动画 |
 | 安卓返回键直接退到桌面 | 没有返回栈 / 依赖注册顺序 | `back-stack.tsx`，按优先级排队 |
 | 长按触发系统选字/菜单 | WebView 默认允许选择 | `index.css` 里全局 `user-select/touch-callout: none`，输入框例外 |
+| 电脑端配置一直不更新 | 手机推的磁贴带 `groupId`（磁片组），电脑端 `Tile.magnetId` 必填 → 整条 `config.push` 解码失败 | `Tile.magnetId` 可选；`sanitize` 保留 `groupId` 磁贴 |
 | 开麦瞬间「噗」一声 | AAC 编码器 priming 瞬态 | 写入端每段音频开始强制 15ms 淡入 |
 | 长时间不说话耗电 | 常开收音一直在编码 | 静默自动关（默认 30s，两端可调）；电平事件限频 12 次/秒 |
 | 震动没反应 | WebView 需要权限 | `AndroidManifest.xml` 的 `VIBRATE` |
@@ -249,6 +263,9 @@ AIRMIC_PORT=47482 node tools/fake-phone.mjs # 换端口（避免和正在跑的 
 2. `AirMicServer.handle(...)`：加处理
 3. `android/src/lib/airmic-store.tsx`：`onMessage` 里加 case（必要时 `transport.send` 回包）
 4. `shared/protocol.md`：补文档
+
+**文本磁片**：判定用 `magnetIsText`，显示用 `magnetDisplay`，能否触发用 `magnetIsBound`。
+新增会触发磁片的地方都要同时处理 `text.paste`，不要只判断 `magnetCombo`（文本磁片的 combo 是空的）。
 
 **加一个图标**：`android/src/components/phone/icons.tsx` 的 `ICON_CHOICES` 里加一行即可
 （`TILE_ICONS` 会自动生成，避免再出现「选了却显示成 Copy」）。

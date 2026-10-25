@@ -18,6 +18,8 @@ public struct Magnet: Codable, Equatable, Identifiable, Hashable {
     public var key: String?
     /// 鼠标键：left / right / middle / wheelUp / wheelDown；与键盘主键互斥
     public var mouse: String?
+    /// 文本磁片的内容。非空时这是「粘贴文本」磁片，没有按键。
+    public var text: String?
 
     public init(
         id: String,
@@ -25,7 +27,8 @@ public struct Magnet: Codable, Equatable, Identifiable, Hashable {
         icon: String,
         modifiers: [String],
         key: String? = nil,
-        mouse: String? = nil
+        mouse: String? = nil,
+        text: String? = nil
     ) {
         self.id = id
         self.label = label
@@ -33,6 +36,13 @@ public struct Magnet: Codable, Equatable, Identifiable, Hashable {
         self.modifiers = modifiers
         self.key = key
         self.mouse = mouse
+        self.text = text
+    }
+
+    /// 是不是「文本磁片」（要粘贴到电脑的一段文字，而不是快捷键）
+    public var isText: Bool {
+        guard let text, !text.isEmpty else { return false }
+        return true
     }
 
     /// 组合键是否已经配全（没配键的磁铁在界面上是暗态）
@@ -40,6 +50,11 @@ public struct Magnet: Codable, Equatable, Identifiable, Hashable {
 
     /// 显示串，如「⌘⇧V」。没配键返回空串。
     public var display: String {
+        if isText {
+            let preview = (text ?? "").replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            let short = preview.count > 10 ? String(preview.prefix(10)) + "…" : preview
+            return "文本 · \(short)"
+        }
         let order = ["ctrl": 0, "alt": 1, "shift": 2, "cmd": 3]
         let symbols = ["ctrl": "⌃", "alt": "⌥", "shift": "⇧", "cmd": "⌘"]
         let mods = modifiers
@@ -57,6 +72,8 @@ public struct Magnet: Codable, Equatable, Identifiable, Hashable {
 
     /// 发往 CGEvent 的组合键数组，如 ["cmd", "shift", "v"]
     public var combo: [String] {
+        // 文本磁片没有按键
+        if isText { return [] }
         var combo = modifiers
         if let mouse, !mouse.isEmpty {
             combo.append(MouseKey.cgEventName(for: mouse))
@@ -151,14 +168,24 @@ public struct KnownApp: Codable, Equatable, Identifiable, Hashable {
     public var displayName: String { name }
 }
 
-/// 磁贴 = 对某个磁铁的引用
+/// 磁贴 = 对某个磁铁（或磁铁组）的引用
+///
+/// ⚠️ `magnetId` 和 `groupId` 二选一：
+///   手机端可以放单个磁铁，也可以放一整个磁铁组。
+///   两个字段都做成可选 —— 之前 `magnetId` 是必填，
+///   结果手机端一旦有磁铁组的磁贴，整条 `config.push` 就解码失败，
+///   电脑端会一直拿着旧的配置。
 public struct Tile: Codable, Equatable, Identifiable, Hashable {
     public var id: String
-    public var magnetId: String
+    /// 引用的磁铁 id（和 `groupId` 二选一）
+    public var magnetId: String?
+    /// 引用的磁铁组 id（和 `magnetId` 二选一）
+    public var groupId: String?
 
-    public init(id: String, magnetId: String) {
+    public init(id: String, magnetId: String? = nil, groupId: String? = nil) {
         self.id = id
         self.magnetId = magnetId
+        self.groupId = groupId
     }
 }
 

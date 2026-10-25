@@ -2,7 +2,7 @@ import { createElement, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Check } from 'lucide-react'
 import { fadeFast, springSnappy } from '@/lib/motion'
-import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import { magnetDisplay, magnetIsBound, type HotkeyMagnet } from '@/lib/hotkey'
 import { tileIcon } from './icons'
 import type { MagnetGroup } from '@/lib/airmic-data'
 import { useAirmic } from '@/lib/airmic-store'
@@ -134,8 +134,8 @@ function TileButton({
   onHoldStart: (magnet: HotkeyMagnet) => void
   onHoldEnd: () => void
 }) {
-  const bound = magnetHasKey(magnet)
-  const keys = magnetKeys(magnet)
+  const bound = magnetIsBound(magnet)
+  const keys = magnetDisplay(magnet)
   const [sent, setSent] = useState(false)
   const [holding, setHolding] = useState(false)
   const timerRef = useRef<number | null>(null)

@@ -109,6 +109,9 @@ public final class ConfigStore {
     }
 
     /// 删磁铁时把引用它的预案一起清掉，否则磁贴会指向不存在的磁铁。
+    ///
+    /// ⚠️ 磁贴可能引用的是**磁铁组**（`groupId`）—— 磁铁组只存在手机端，
+    /// 电脑端不知道有哪些组，所以这类磁贴一律原样保留。
     public func sanitize(presets: [Preset], magnets: [Magnet]) -> [Preset] {
         let ids = Set(magnets.map(\.id))
         var result = presets.map { preset in
@@ -116,7 +119,10 @@ public final class ConfigStore {
             if let press = p.micPressId, !ids.contains(press) { p.micPressId = nil }
             if let release = p.micReleaseId, !ids.contains(release) { p.micReleaseId = nil }
             if let hold = p.micHoldId, !ids.contains(hold) { p.micHoldId = nil }
-            p.tiles = p.tiles.filter { ids.contains($0.magnetId) }
+            p.tiles = p.tiles.filter { tile in
+                guard let magnetId = tile.magnetId else { return true }
+                return ids.contains(magnetId)
+            }
             return p
         }
         // 必须恰好有一个默认预案

@@ -31,6 +31,8 @@ public final class AirMicServer: ObservableObject {
     private let configStore = ConfigStore()
     private let foregroundWatcher = ForegroundAppWatcher()
     private let hotkeyExecutor = HotkeyExecutor()
+    /// 文本磁片：把提前编辑好的文字粘贴到前台应用
+    private lazy var textPaster = TextPaster(hotkeyExecutor: hotkeyExecutor)
     /// 音频管线：解码 → 写进虚拟设备
     private let audioWriter = VirtualAudioWriter()
     private var audioDecoder: AacDecoder?
@@ -408,6 +410,13 @@ public final class AirMicServer: ObservableObject {
         case Message.Kind.hotkeyUp:
             guard requireAccessibility(client: client) else { return }
             hotkeyExecutor.release()
+        case Message.Kind.textPaste:
+            // 文本磁片：把一段文字粘贴到前台应用
+            guard let text = message.text, !text.isEmpty else { return }
+            guard requireAccessibility(client: client) else { return }
+            if !textPaster.paste(text, target: targetApplication()) {
+                sendHotkeyError(client: client, reason: "这段文本没能在电脑上粘贴出来，检查一下辅助功能权限")
+            }
         case Message.Kind.configPush, Message.Kind.configUpdate:
             handleConfig(message, client: client)
         case Message.Kind.appsRequest:

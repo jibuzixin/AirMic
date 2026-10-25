@@ -5,7 +5,7 @@ import { Plus, X } from 'lucide-react'
 import { fadeFast, springSmooth } from '@/lib/motion'
 import { usePhoneOverlay } from './PhoneOverlay'
 import { useBackHandler } from '@/lib/back-stack'
-import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import { magnetDisplay, magnetIsBound, type HotkeyMagnet } from '@/lib/hotkey'
 import type { MagnetGroup } from '@/lib/airmic-data'
 import { tileIcon } from './icons'
 
@@ -94,7 +94,7 @@ export function MagnetPicker({
             </li>
             {magnets.map((magnet) => {
               const Icon = tileIcon(magnet.icon)
-              const hasKey = magnetHasKey(magnet)
+              const hasKey = magnetIsBound(magnet)
               return (
                 <li key={magnet.id}>
                   <button
@@ -107,7 +107,7 @@ export function MagnetPicker({
                       {magnet.label}
                     </span>
                     <span className="tabular text-[11px] text-text-tertiary">
-                      {hasKey ? magnetKeys(magnet) : '未设置'}
+                      {hasKey ? magnetDisplay(magnet) : '未设置'}
                     </span>
                   </button>
                 </li>

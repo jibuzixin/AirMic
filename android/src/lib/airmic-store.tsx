@@ -19,7 +19,7 @@ import {
   type Stats,
 } from './airmic-data'
 import { EMPTY_STATS } from './airmic-data'
-import { magnetCombo, type HotkeyMagnet } from './hotkey'
+import { magnetCombo, magnetIsText, type HotkeyMagnet } from './hotkey'
 import { vibrate, type HapticKind, type HapticStrength } from './haptics'
 import { createTransport, type AirMicTransport } from './transport'
 
@@ -32,6 +32,16 @@ import { createTransport, type AirMicTransport } from './transport'
  */
 
 export type MicMode = 'idle' | 'continuous' | 'ptt'
+
+/**
+ * 磁片能触发的两种动作
+ *
+ * - `key`：按一组组合键（普通快捷键磁片）
+ * - `text`：让电脑粘贴一段文字（文本磁片）
+ */
+export type MagnetAction =
+  | { kind: 'key'; combo: string[] }
+  | { kind: 'text'; text: string }
 
 /** 外观：跟随系统 / 浅色 / 深色 */
 export type ThemeMode = 'system' | 'light' | 'dark'
@@ -360,10 +370,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const heldComboRef = useRef<string[] | null>(null)
   /**
    * 长按绑定的是磁片组时，松手后还要依次执行的步骤。
-   * 组里的第一步跟着手指按住，剩下的存在这里。
+   *
+   * 步骤有两种：按键（hotkey.execute）和文本（text.paste）。
+   * 组里第一个有组合键的步骤是「按住不放」的那个，它前面的文本在按下时粘贴，
+   * 它后面的步骤在松手后依次执行 —— 这样组的先后顺序不会乱。
    */
   const heldGroupStepsRef = useRef<{
-    combos: string[][]
+    steps: MagnetAction[]
     intervalMs: number
   } | null>(null)
   const holdReleaseTimers = useRef<number[]>([])
@@ -960,6 +973,11 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   const fireTap = useCallback(
     (magnet: HotkeyMagnet | null) => {
       if (!magnet) return
+      // 文本磁片：让电脑把这段文字粘贴出来
+      if (magnetIsText(magnet)) {
+        send({ type: 'text.paste', text: magnet.text })
+        return
+      }
       const combo = magnetCombo(magnet)
       if (combo.length === 0) return
       send({ type: 'hotkey.execute', combo })
@@ -991,27 +1009,63 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     // 用的是「长按」自己绑定的磁片 / 磁片组，与「按下 / 松开」互相独立
     const binding = presetHoldBinding()
     if (binding.group) {
-      // 组：找第一个能执行的步骤按住，剩下的等松手再跑
-      const combos: string[][] = []
+      /*
+       * 组：找出第一个**有组合键**的步骤 —— 那个是「按住不放」的。
+       *
+       * ⚠️ 文本磁片没法按住（没有键能一直按着），所以：
+       *   - 它排在按住的那一步**之前** → 按下时立刻粘贴出来
+       *   - 它排在**之后** → 松手后跟着其它步骤一起依次执行
+       * 这样组内的先后顺序不会被打乱。
+       */
+      const actions: MagnetAction[] = []
       for (const magnetId of binding.group.steps) {
         const magnet = magnets.find((m) => m.id === magnetId)
         if (!magnet) continue
+        if (magnetIsText(magnet)) {
+          if (magnet.text) actions.push({ kind: 'text', text: magnet.text })
+          continue
+        }
         const combo = magnetCombo(magnet)
-        if (combo.length > 0) combos.push(combo)
+        if (combo.length > 0) actions.push({ kind: 'key', combo })
       }
-      if (combos.length > 0) {
-        heldComboRef.current = combos[0]
+
+      const holdIndex = actions.findIndex((a) => a.kind === 'key')
+      if (holdIndex === -1) {
+        // 全是文本磁片：没有能按住的那一步，按下就全部粘贴出来
+        for (const action of actions) {
+          if (action.kind === 'text') {
+            send({ type: 'text.paste', text: action.text })
+          }
+        }
+      } else {
+        // 按住之前的那几步（只能是文本）先粘贴出来
+        for (const action of actions.slice(0, holdIndex)) {
+          if (action.kind === 'text') {
+            send({ type: 'text.paste', text: action.text })
+          }
+        }
+        const held = actions[holdIndex]
+        if (held.kind === 'key') {
+          heldComboRef.current = held.combo
+          send({ type: 'hotkey.down', combo: held.combo })
+        }
         heldGroupStepsRef.current = {
-          combos: combos.slice(1),
+          steps: actions.slice(holdIndex + 1),
           intervalMs: Math.max(0, binding.group.intervalSeconds) * 1000,
         }
-        send({ type: 'hotkey.down', combo: combos[0] })
       }
     } else if (binding.magnet) {
-      const combo = magnetCombo(binding.magnet)
-      if (combo.length > 0) {
-        heldComboRef.current = combo
-        send({ type: 'hotkey.down', combo })
+      // 单个磁片：文本磁片按下就粘贴出来
+      if (magnetIsText(binding.magnet)) {
+        if (binding.magnet.text) {
+          send({ type: 'text.paste', text: binding.magnet.text })
+        }
+      } else {
+        const combo = magnetCombo(binding.magnet)
+        if (combo.length > 0) {
+          heldComboRef.current = combo
+          send({ type: 'hotkey.down', combo })
+        }
       }
     }
     setMicMode('ptt')
@@ -1028,12 +1082,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     // 长按绑定磁片组：松开第一步之后，先等一个组间隔，剩下的再依次执行
     const pending = heldGroupStepsRef.current
     heldGroupStepsRef.current = null
-    if (pending && pending.combos.length > 0) {
+    if (pending && pending.steps.length > 0) {
       let delay = pending.intervalMs
-      for (const combo of pending.combos) {
+      for (const action of pending.steps) {
         holdReleaseTimers.current.push(
           window.setTimeout(() => {
-            send({ type: 'hotkey.execute', combo })
+            if (action.kind === 'text') {
+              send({ type: 'text.paste', text: action.text })
+            } else {
+              send({ type: 'hotkey.execute', combo: action.combo })
+            }
           }, delay),
         )
         delay += pending.intervalMs
@@ -1063,12 +1121,21 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   /* ---------- 快捷键 ---------- */
 
-  /** 磁贴长按记住的组合键 */
+  /** 长按磁贴记住的组合键 */
   const heldTileComboRef = useRef<string[] | null>(null)
 
-  /** 长按磁贴：按下组合键，等松手才抬起 */
+  /**
+   * 长按磁贴：按下组合键并保持
+   *
+   * ⚠️ 文本磁片没有键可以「按住」—— 长按它就是**粘贴这段文字**，
+   * 和点按效果一样（松手时不会重复触发）。
+   */
   const holdTileMagnet = useCallback(
     (magnet: HotkeyMagnet) => {
+      if (magnetIsText(magnet)) {
+        if (magnet.text) send({ type: 'text.paste', text: magnet.text })
+        return
+      }
       const combo = magnetCombo(magnet)
       if (combo.length === 0) return
       heldTileComboRef.current = combo
@@ -1087,6 +1154,11 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   /** 点磁贴：把组合键发给电脑执行 */
   const fireMagnet = useCallback(
     (magnet: HotkeyMagnet) => {
+      // 文本磁片：让电脑把这段文字粘贴出来
+      if (magnetIsText(magnet)) {
+        send({ type: 'text.paste', text: magnet.text })
+        return
+      }
       const combo = magnetCombo(magnet)
       if (combo.length === 0) return
       send({ type: 'hotkey.execute', combo })
@@ -1280,6 +1352,18 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       for (const magnetId of group.steps) {
         const magnet = magnets.find((m) => m.id === magnetId)
         if (!magnet) continue
+        // 文本磁片：让电脑把这段文字粘贴出来
+        if (magnetIsText(magnet)) {
+          const text = magnet.text
+          if (!text) continue
+          groupTimers.current.push(
+            window.setTimeout(() => {
+              send({ type: 'text.paste', text })
+            }, delay),
+          )
+          delay += Math.max(0, group.intervalSeconds) * 1000
+          continue
+        }
         const combo = magnetCombo(magnet)
         if (combo.length === 0) continue
         groupTimers.current.push(

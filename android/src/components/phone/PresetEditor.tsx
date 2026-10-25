@@ -7,8 +7,8 @@ import { useAirmic } from '@/lib/airmic-store'
 import { useBackHandler } from '@/lib/back-stack'
 import { fadeFast, layoutSpring, springSmooth } from '@/lib/motion'
 import {
-  magnetHasKey,
-  magnetKeys,
+  magnetDisplay,
+  magnetIsBound,
   type HotkeyMagnet,
 } from '@/lib/hotkey'
 import { Collapse } from '@/components/Collapse'
@@ -361,8 +361,8 @@ export function PresetEditor({
                   const title = group ? group.name : (magnet?.label ?? '（磁片已删除）')
                   const subtitle = group
                     ? `${group.steps.length} 步 · 间隔 ${group.intervalSeconds}s`
-                    : magnet && magnetHasKey(magnet)
-                      ? magnetKeys(magnet)
+                    : magnet && magnetIsBound(magnet)
+                      ? magnetDisplay(magnet)
                       : '未设置'
                   return (
                     <li
@@ -384,7 +384,7 @@ export function PresetEditor({
                         aria-label={`更换磁贴「${title}」`}
                         className="tabular shrink-0 rounded-full px-2 py-1 text-[10px] transition-colors"
                         style={
-                          group || (magnet && magnetHasKey(magnet))
+                          group || (magnet && magnetIsBound(magnet))
                             ? {
                                 background: 'var(--color-surface-3)',
                                 color: 'var(--color-text-secondary)',
@@ -557,13 +557,13 @@ function MagnetSlot({
   group?: MagnetGroup | null
   onClick: () => void
 }) {
-  const hasKey = magnetHasKey(magnet)
+  const hasKey = magnetIsBound(magnet)
   const iconName = group?.icon ?? magnet?.icon ?? null
   const title = group?.name ?? magnet?.label ?? '不绑定'
   const badge = group
     ? `${group.steps.length} 步`
     : hasKey
-      ? magnetKeys(magnet)
+      ? magnetDisplay(magnet)
       : '未设置'
   return (
     <button

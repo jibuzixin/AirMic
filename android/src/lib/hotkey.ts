@@ -10,6 +10,10 @@
  *
  * 显示串（⌘⇧V）和发给电脑的组合键（['cmd','shift','v']）都是**算出来的**，
  * 不作为字段存 —— 避免两处数据不一致。
+ *
+ * ⚠️ **文本磁片**：`text` 非空时这个磁片不是快捷键，而是一段提前编辑好的文本。
+ * 触发时电脑端把这段文字粘贴到前台应用（短暂使用剪贴板，粘完还原）。
+ * 这种磁片没有按键，`key` / `mouse` 一定都是 null。
  */
 
 export type ModifierKey = 'cmd' | 'shift' | 'ctrl' | 'alt'
@@ -28,6 +32,13 @@ export type HotkeyMagnet = {
   key: string | null
   /** 鼠标键。用键盘键时为 null */
   mouse: MouseKey | null
+  /**
+   * 文本磁片的内容。
+   *
+   * 非空 → 这是个「粘贴文本」磁片，触发时把这段文字打到电脑上。
+   * 为空 / 不存在 → 普通快捷键磁片。
+   */
+  text?: string | null
 }
 
 /* ---------- 修饰键 ---------- */
@@ -162,9 +173,12 @@ export function magnetKeys(magnet: HotkeyMagnet | null | undefined): string {
 
 /**
  * 发往电脑的组合键数组，如 ['cmd','shift','v']
+ *
+ * 文本磁片没有按键，返回空数组 —— 走的是另一条「text.paste」通道。
  */
 export function magnetCombo(magnet: HotkeyMagnet | null | undefined): string[] {
   if (!magnet) return []
+  if (magnetIsText(magnet)) return []
   const combo: string[] = [...magnet.modifiers]
   if (magnet.mouse) {
     combo.push(MOUSE_COMBO[magnet.mouse])
@@ -178,4 +192,42 @@ export function magnetCombo(magnet: HotkeyMagnet | null | undefined): string[] {
 export function magnetHasKey(magnet: HotkeyMagnet | null | undefined): boolean {
   if (!magnet) return false
   return magnet.mouse !== null || magnet.key !== null
+}
+
+/* ---------- 文本磁片 ---------- */
+
+/**
+ * 这是不是个「文本磁片」
+ *
+ * 文本磁片存的是一段提前编辑好的文字，触发时让电脑把它粘贴出来，
+ * 而不是发一组按键。
+ */
+export function magnetIsText(magnet: HotkeyMagnet | null | undefined): boolean {
+  if (!magnet) return false
+  return typeof magnet.text === 'string' && magnet.text.length > 0
+}
+
+/**
+ * 磁片的显示串（用在磁片库、磁贴、磁片组里）
+ *
+ * 快捷键磁片 → 「⌘⇧V」；文本磁片 → 「文本 · 前几个字」。
+ */
+export function magnetDisplay(magnet: HotkeyMagnet | null | undefined): string {
+  if (!magnet) return ''
+  if (magnetIsText(magnet)) {
+    const preview = (magnet.text ?? '').replace(/\s+/g, ' ').trim()
+    const short = preview.length > 10 ? `${preview.slice(0, 10)}…` : preview
+    return `文本 · ${short}`
+  }
+  return magnetKeys(magnet)
+}
+
+/**
+ * 磁片是否已经配好了、可以触发
+ *
+ * 文本磁片没有按键，但配了文字也算「配好了」。
+ */
+export function magnetIsBound(magnet: HotkeyMagnet | null | undefined): boolean {
+  if (!magnet) return false
+  return magnetIsText(magnet) || magnetHasKey(magnet)
 }

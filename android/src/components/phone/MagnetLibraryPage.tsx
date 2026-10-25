@@ -3,7 +3,7 @@ import { AnimatePresence } from 'framer-motion'
 import { ChevronLeft, Plus, Trash2 } from 'lucide-react'
 import { useAirmic } from '@/lib/airmic-store'
 import { useBackHandler } from '@/lib/back-stack'
-import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import { magnetDisplay, magnetIsBound, type HotkeyMagnet } from '@/lib/hotkey'
 import { tileIcon } from './icons'
 import { MagnetEditor } from './MagnetEditor'
 
@@ -75,7 +75,7 @@ export function MagnetLibraryPage({ onBack }: { onBack: () => void }) {
                   {magnet.label}
                 </span>
                 <span className="tabular shrink-0 text-[11px] text-text-tertiary">
-                  {magnetHasKey(magnet) ? magnetKeys(magnet) : '未设置'}
+                  {magnetIsBound(magnet) ? magnetDisplay(magnet) : '未设置'}
                 </span>
                 <button
                   type="button"

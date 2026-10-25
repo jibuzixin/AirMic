@@ -46,6 +46,9 @@ public struct Message: Codable, Equatable {
     // 快捷键
     public var combo: [String]?
 
+    /// 文本磁片：要粘贴到电脑的文字
+    public var text: String?
+
     // ping / pong：网络往返
     public var t: Int64?
 
@@ -91,6 +94,8 @@ public struct Message: Codable, Equatable {
         static let hotkeyDown = "hotkey.down"
         /// 长按语义：松开组合键
         static let hotkeyUp = "hotkey.up"
+        /// 文本磁片：把一段文字粘贴到前台应用
+        static let textPaste = "text.paste"
         static let micStateReport = "mic.state.report"
 
         static let ping = "ping"

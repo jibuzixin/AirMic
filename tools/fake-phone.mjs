@@ -4,11 +4,13 @@
 //   node tools/fake-phone.mjs                 # 连上，打印收到的所有消息
 //   node tools/fake-phone.mjs --pair          # 走「手机发起、电脑确认」配对
 //   node tools/fake-phone.mjs --hotkey cmd+shift+v
+//   node tools/fake-phone.mjs --text "你好世界"
 //
 // 选项：
 //   --host <地址>   默认 127.0.0.1
 //   --port <端口>   默认 47471
 //   --name <设备名> 默认 Fake Phone
+//   --text <文字>   发送一条 text.paste（文本磁片）
 
 import fs from 'node:fs'
 import net from 'node:net'
@@ -69,6 +71,10 @@ socket.on('connect', () => {
   if (flag('hotkey')) {
     const combo = String(flag('hotkey')).split('+')
     setTimeout(() => send({ type: 'hotkey.execute', combo }), 400)
+  }
+  if (flag('text')) {
+    const text = String(flag('text'))
+    setTimeout(() => send({ type: 'text.paste', text }), 400)
   }
 })
 

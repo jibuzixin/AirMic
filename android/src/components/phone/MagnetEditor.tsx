@@ -5,7 +5,13 @@ import { X } from 'lucide-react'
 import { fadeFast, springSmooth } from '@/lib/motion'
 import { usePhoneOverlay } from './PhoneOverlay'
 import { useBackHandler } from '@/lib/back-stack'
-import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import {
+  magnetDisplay,
+  magnetHasKey,
+  magnetIsBound,
+  magnetIsText,
+  type HotkeyMagnet,
+} from '@/lib/hotkey'
 import { HotkeyRecorder, recorderState } from './HotkeyRecorder'
 import { MagnetIconPicker } from './MagnetIconPicker'
 
@@ -15,7 +21,9 @@ import { MagnetIconPicker } from './MagnetIconPicker'
  * 添加 / 编辑一个磁片，三步：
  *   1. 挑一个图标
  *   2. 起一个名字
- *   3. 用内置的键盘 + 鼠标菜单，依次点出想要的组合键
+ *   3. 选「快捷键」或「文本」：
+ *      - 快捷键：用内置的键盘 + 鼠标菜单，依次点出想要的组合键
+ *      - 文本：写一段提前编辑好的文字，触发时电脑直接把它粘贴出来
  *
  * 磁片是**全局共享**的：预案磁贴和麦克风按钮的按下/松开都引用它。
  */
@@ -34,16 +42,23 @@ export function MagnetEditor({
   const [label, setLabel] = useState(magnet?.label ?? '')
   const [icon, setIcon] = useState(magnet?.icon ?? 'Command')
   const [rec, setRec] = useState(() => recorderState(magnet))
+  /** 磁片类型：快捷键 / 文本 */
+  const [kind, setKind] = useState<'key' | 'text'>(() =>
+    magnetIsText(magnet) ? 'text' : 'key',
+  )
+  const [text, setText] = useState(magnet?.text ?? '')
 
+  const isText = kind === 'text'
   const draft: HotkeyMagnet = {
     id: magnet?.id ?? 'draft',
     label,
     icon,
-    modifiers: rec.modifiers,
-    key: rec.mainKey,
-    mouse: rec.mouse,
+    modifiers: isText ? [] : rec.modifiers,
+    key: isText ? null : rec.mainKey,
+    mouse: isText ? null : rec.mouse,
+    text: isText ? text : null,
   }
-  const hasKey = magnetHasKey(draft)
+  const hasKey = isText ? text.trim().length > 0 : magnetHasKey(draft)
   const canSave = label.trim().length > 0 && hasKey
 
   const overlay = usePhoneOverlay()
@@ -106,33 +121,91 @@ export function MagnetEditor({
             />
           </section>
 
-          {/* ---------- 3. 快捷键 ---------- */}
+          {/* ---------- 3. 类型：快捷键 / 文本 ---------- */}
           <section className="mt-4">
-            <h3 className="text-[12px] font-medium text-text-primary">
-              快捷键
-            </h3>
-            <p className="mt-0.5 text-[10px] text-text-tertiary">
-              依次点出想要的组合键 —— 修饰键可以多选，主键单选
-            </p>
-            <div className="mt-2">
-              {/*
-               * ⚠️ 主键必须传成 `mainKey`：
-               *   写成 `key={rec.mainKey}` 的话，`key` 会被 React 当成 element 的
-               *   身份标识吃掉 —— 子组件永远收到 undefined，
-               *   而且每改一次主键整个组件就被卸载重建，表现为「点了没反应」。
-               */}
-              <HotkeyRecorder
-                modifiers={rec.modifiers}
-                mainKey={rec.mainKey}
-                mouse={rec.mouse}
-                onChange={setRec}
-              />
+            <h3 className="text-[12px] font-medium text-text-primary">类型</h3>
+            <div className="mt-2 flex gap-1.5">
+              {(
+                [
+                  { id: 'key' as const, label: '快捷键' },
+                  { id: 'text' as const, label: '文本' },
+                ]
+              ).map((option) => {
+                const active = kind === option.id
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setKind(option.id)}
+                    aria-pressed={active}
+                    className="h-9 flex-1 rounded-[10px] border text-[12px] transition-colors"
+                    style={{
+                      borderColor: active
+                        ? 'var(--color-border-strong)'
+                        : 'var(--color-border-subtle)',
+                      background: active
+                        ? 'var(--color-surface-3)'
+                        : 'var(--color-surface-2)',
+                      color: active
+                        ? 'var(--color-text-primary)'
+                        : 'var(--color-text-secondary)',
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
             </div>
           </section>
 
+          {/* ---------- 4. 快捷键 / 文本内容 ---------- */}
+          {isText ? (
+            <section className="mt-4">
+              <h3 className="text-[12px] font-medium text-text-primary">
+                要粘贴的文本
+              </h3>
+              <p className="mt-0.5 text-[10px] text-text-tertiary">
+                触发时电脑会直接粘贴这段文字（中文、emoji 都可以）
+              </p>
+              <textarea
+                value={text}
+                onChange={(e) => setText(e.target.value)}
+                placeholder="比如：帮我把这段话发给设计同学"
+                aria-label="磁片的文本内容"
+                rows={4}
+                className="mt-2 w-full resize-none rounded-[10px] border border-border-subtle bg-surface-2 px-3 py-2 text-[13px] leading-relaxed text-text-primary outline-none placeholder:text-text-faint focus:border-border-strong"
+              />
+            </section>
+          ) : (
+            <section className="mt-4">
+              <h3 className="text-[12px] font-medium text-text-primary">
+                快捷键
+              </h3>
+              <p className="mt-0.5 text-[10px] text-text-tertiary">
+                依次点出想要的组合键 —— 修饰键可以多选，主键单选
+              </p>
+              <div className="mt-2">
+                {/*
+                 * ⚠️ 主键必须传成 `mainKey`：
+                 *   写成 `key={rec.mainKey}` 的话，`key` 会被 React 当成 element 的
+                 *   身份标识吃掉 —— 子组件永远收到 undefined，
+                 *   而且每改一次主键整个组件就被卸载重建，表现为「点了没反应」。
+                 */}
+                <HotkeyRecorder
+                  modifiers={rec.modifiers}
+                  mainKey={rec.mainKey}
+                  mouse={rec.mouse}
+                  onChange={setRec}
+                />
+              </div>
+            </section>
+          )}
+
           {!hasKey && (
             <p className="mt-3 text-[11px]" style={{ color: 'var(--color-recording)' }}>
-              还没选主键 —— 磁片要有至少一个键才能保存
+              {isText
+                ? '还没写内容 —— 磁片要有文本才能保存'
+                : '还没选主键 —— 磁片要有至少一个键才能保存'}
             </p>
           )}
 
@@ -143,9 +216,10 @@ export function MagnetEditor({
                 onSave({
                   label: label.trim(),
                   icon,
-                  modifiers: rec.modifiers,
-                  key: rec.mainKey,
-                  mouse: rec.mouse,
+                  modifiers: isText ? [] : rec.modifiers,
+                  key: isText ? null : rec.mainKey,
+                  mouse: isText ? null : rec.mouse,
+                  text: isText ? text : null,
                 })
               }
               disabled={!canSave}
@@ -171,7 +245,7 @@ export function MagnetEditor({
 /** 磁片在列表里显示的组合键（没配键时的占位） */
 export function magnetKeyLabel(magnet: HotkeyMagnet | null | undefined): string {
   if (!magnet) return '未设置'
-  return magnetHasKey(magnet) ? magnetKeys(magnet) : '未设置'
+  return magnetIsBound(magnet) ? magnetDisplay(magnet) : '未设置'
 }
 
 export { AnimatePresence }

@@ -5,7 +5,7 @@ import { LevelRing } from '@/components/LevelRing'
 import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
 import { fadeFast, springSmooth } from '@/lib/motion'
-import { magnetHasKey, magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import { magnetDisplay, magnetIsBound, magnetIsText, type HotkeyMagnet } from '@/lib/hotkey'
 import type { MagnetGroup } from '@/lib/airmic-data'
 import { TileGrid, type TileEntry } from './TileGrid'
 
@@ -173,7 +173,7 @@ export function MicPage({
     (magnet: HotkeyMagnet) => {
       // ⚠️ 必须真的发给电脑 —— 原型里这里只弹了个 toast，什么都没发
       fireMagnet(magnet)
-      showToast(`已发送 ${magnetKeys(magnet)}`)
+      showToast(`已发送 ${magnetDisplay(magnet)}`)
     },
     [fireMagnet, showToast],
   )
@@ -181,7 +181,12 @@ export function MicPage({
   const handleHoldStart = useCallback(
     (magnet: HotkeyMagnet) => {
       holdTileMagnet(magnet)
-      showToast(`按住中 · ${magnetKeys(magnet)}（松手松开）`)
+      // 文本磁片没有「按住」语义 —— 长按只是把它粘贴出来
+      showToast(
+        magnetIsText(magnet)
+          ? `已发送 ${magnetDisplay(magnet)}`
+          : `按住中 · ${magnetDisplay(magnet)}（松手松开）`,
+      )
     },
     [holdTileMagnet, showToast],
   )
@@ -388,11 +393,11 @@ function HotkeyChip({
   group?: MagnetGroup | null
   onClick: () => void
 }) {
-  const bound = !!group || magnetHasKey(magnet)
+  const bound = !!group || magnetIsBound(magnet)
   const keys = group
     ? `组 · ${group.steps.length} 步`
     : bound
-      ? magnetKeys(magnet)
+      ? magnetDisplay(magnet)
       : ''
   const groupName = group?.name
 

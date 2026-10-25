@@ -13,7 +13,7 @@ import {
 } from 'lucide-react'
 import { useAirmic } from '@/lib/airmic-store'
 import { useBackHandler } from '@/lib/back-stack'
-import { magnetKeys, type HotkeyMagnet } from '@/lib/hotkey'
+import { magnetDisplay, type HotkeyMagnet } from '@/lib/hotkey'
 import type { MagnetGroup } from '@/lib/airmic-data'
 import { tileIcon } from './icons'
 
@@ -367,7 +367,7 @@ function GroupEditor({
                   {magnet.label}
                 </span>
                 <span className="tabular text-[10px] text-text-tertiary">
-                  {magnetKeys(magnet)}
+                  {magnetDisplay(magnet)}
                 </span>
                 <Plus size={12} strokeWidth={2} className="text-text-tertiary" />
               </button>

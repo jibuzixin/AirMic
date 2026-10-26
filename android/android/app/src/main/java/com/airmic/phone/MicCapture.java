@@ -83,6 +83,11 @@ public class MicCapture {
     public void start(String mode, String host, int port) throws IOException {
         synchronized (lifecycle) {
             stopLocked();
+            // 上一次采集线程还没退出时不要再起一个：
+            // 两个线程操作同一组 AudioRecord/MediaCodec 会直接崩进程。
+            if (worker != null && worker.isAlive()) {
+                throw new IOException("上一次采集还没结束，请稍后再试");
+            }
             this.mode = mode;
             this.target = InetAddress.getByName(host);
             this.targetPort = port;

@@ -22,6 +22,8 @@ public struct Message: Codable, Equatable {
     public var sessionId: String?
     public var pairingRequired: Bool?
     public var server: ServerState?
+    /// 电脑端支持的可选能力（例如 "ping"）。老版本不带这个字段。
+    public var features: [String]?
 
     // 配对
     public var code: String?

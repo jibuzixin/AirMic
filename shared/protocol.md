@@ -41,7 +41,7 @@
 | 方向 | type | 载荷 | 说明 |
 |---|---|---|---|
 | 客户端→电脑 | `hello` | `protocolVersion, deviceId, deviceName, model, token?` | `token` 为空表示未配对 |
-| 电脑→客户端 | `welcome` | `sessionId, pairingRequired, server:{recording, foregroundApp, outputDeviceId, bufferMs}` | 配对成功时 `pairingRequired=false` |
+| 电脑→客户端 | `welcome` | `sessionId, pairingRequired, features?, server:{...}` | 配对成功时 `pairingRequired=false`；`features` 是可选能力列表（0.6.2+ 含 `"ping"`） |
 | 电脑→客户端 | `hello.reject` | `reason` | 协议版本不符 |
 
 #### 配对
@@ -91,6 +91,7 @@
 
 > 心跳：电脑端发 `ping { t }`（收音时 2 秒一次，空转时 10 秒一次），手机端回
 > `pong { t }`。pong 由原生层直接回复，WebView 在后台被挂起也不影响。
+> 手机回到前台时也会主动发 `ping { t }` 做一次健康检查；电脑端原样回 `pong`。
 > 手机端在后台会用一条 `connectedDevice` 前台服务维持 TCP，不改变协议本身。
 
 ### 2.2.1 麦克风按钮的按键语义

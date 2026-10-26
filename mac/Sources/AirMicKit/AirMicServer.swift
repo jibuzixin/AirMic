@@ -445,6 +445,13 @@ public final class AirMicServer: ObservableObject {
             sendAppList(to: client)
         case Message.Kind.appsCurrentRequest:
             sendCurrentApp(to: client)
+        case Message.Kind.ping:
+            // 手机回到前台时主动做一次健康检查：原样回时间戳
+            if let sent = message.t {
+                var pong = Message(type: Message.Kind.pong)
+                pong.t = sent
+                client.send(pong)
+            }
         case Message.Kind.pong:
             if let sent = message.t {
                 let now = Int64(Date().timeIntervalSince1970 * 1000)
@@ -494,6 +501,7 @@ public final class AirMicServer: ObservableObject {
         welcome.sessionId = UUID().uuidString
         welcome.pairingRequired = !paired
         welcome.server = currentServerState()
+        welcome.features = ["ping"]
         client.send(welcome)
 
         if paired {

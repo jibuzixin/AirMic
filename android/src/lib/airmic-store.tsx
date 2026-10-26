@@ -536,6 +536,36 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     rediscoverRef.current = rediscover
   }, [rediscover])
 
+  /** 电脑端是否支持手机主动 ping（老版本没有这个能力，别因此误判断线） */
+  const serverSupportsPingRef = useRef(false)
+
+  /** 回到前台时发一次 ping/pong：连着就无感继续用，真断了再重连 */
+  const healthPingRef = useRef<{ t: number; timer: number } | null>(null)
+  const clearHealthCheck = useCallback(() => {
+    if (healthPingRef.current) {
+      window.clearTimeout(healthPingRef.current.timer)
+      healthPingRef.current = null
+    }
+  }, [])
+  const healthCheck = useCallback(() => {
+    clearHealthCheck()
+    const t = Date.now()
+    const timer = window.setTimeout(() => {
+      healthPingRef.current = null
+      if (!connectedRef.current) return
+      // ping 没回来：这条连接已经不能用了
+      connectedRef.current = false
+      lastConnectFailedRef.current = true
+      setConnected(false)
+      if (micModeRef.current !== 'idle') {
+        setMicMode('idle')
+        void transport.stopMic()
+      }
+    }, 2000)
+    healthPingRef.current = { t, timer }
+    send({ type: 'ping', t })
+  }, [clearHealthCheck, send, transport])
+
   /**
    * 回到前台：
    * - 离开超过 2 秒、且没在收音 → 强制重建连接（旧 socket 可能已经僵死）
@@ -557,22 +587,26 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         persisted.token &&
         micModeRef.current === 'idle'
       ) {
-        // 标记成未连接，让下面的重连 effect 接手
-        setConnected(false)
-        // 顺便重新扫一次：电脑休眠后 IP 可能变了，旧地址会一直连不上
-        void rediscoverRef.current().then((updated) => {
-          if (
-            updated &&
-            !backgroundedAtRef.current &&
-            !connectedRef.current &&
-            !connectInFlightRef.current
-          ) {
-            reconnect()
-          }
-        })
+        if (connectedRef.current && serverSupportsPingRef.current) {
+          // 连接还在：发一个 ping 验证，不主动断开 —— 用户回来立刻能用
+          healthCheck()
+        } else if (!connectedRef.current) {
+          // 已经断了：重新扫一次地址再连
+          void rediscoverRef.current().then((updated) => {
+            if (
+              updated &&
+              !backgroundedAtRef.current &&
+              !connectedRef.current &&
+              !connectInFlightRef.current
+            ) {
+              reconnect()
+            }
+          })
+        }
+        // 连着但电脑端是老版本：不主动断，也不误判；靠原生连接状态
       }
     })
-  }, [persisted.token, reconnect, transport])
+  }, [healthCheck, persisted.token, reconnect, transport])
 
   /**
    * 断线自动重连。
@@ -768,10 +802,13 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       switch (message.type) {
         case 'welcome': {
           const required = message.pairingRequired === true
+          serverSupportsPingRef.current =
+            Array.isArray(message.features) && message.features.includes('ping')
           setPaired(!required)
           if (!required) {
             setConnected(true)
             setConnectionError(null)
+            clearHealthCheck()
           }
           // 需要配对、而且是用户刚点了这台设备 → 这时候才发配对请求
           if (required && pairingDevice) {
@@ -874,6 +911,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
             })
           }
           break
+        case 'pong':
+          // 回到前台时主动 ping 的回包
+          if (
+            healthPingRef.current &&
+            (typeof message.t !== 'number' ||
+              message.t === healthPingRef.current.t)
+          ) {
+            clearHealthCheck()
+          }
+          break
         case 'mic.state':
           setServerRunning(message.mode !== 'idle')
           break
@@ -891,9 +938,11 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setConnected(state.connected)
       if (state.connected) {
         setConnectionError(null)
+        clearHealthCheck()
         return
       }
       if (state.error) setConnectionError(state.error)
+      clearHealthCheck()
 
       // ⚠️ 断线不再退回设备页 —— 用户熄屏几分钟回来，应该还在麦克风页，
       // 由上面的重连 effect 自动续上。只有用户主动断开 / 配对失效才回设备页。
@@ -912,6 +961,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     }
   }, [
     bufferMs,
+    clearHealthCheck,
     deviceInfo.deviceId,
     devices,
     pairedDevice,
@@ -1070,10 +1120,22 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   /* ---------- 麦克风按钮双语义 ---------- */
   const beginCapture = useCallback(
     async (mode: 'continuous' | 'ptt') => {
+      // 没连上就别启动采集：否则原生会拿旧地址启动服务，
+      // 轻则录了个寂寞，重则在前台服务切换时闪退。
+      if (!connected) {
+        setMicBlockedNotice('正在连接电脑，稍等一下')
+        return false
+      }
       // 没有麦克风权限就别硬来 —— 直接告诉用户要开哪个权限
-      let granted = await transport.hasMicPermission()
-      if (!granted) {
-        granted = await transport.requestMicPermission()
+      let granted = false
+      try {
+        granted = await transport.hasMicPermission()
+        if (!granted) {
+          granted = await transport.requestMicPermission()
+        }
+      } catch {
+        setMicBlockedNotice('检查麦克风权限失败，请再试一次')
+        return false
       }
       if (!granted) {
         setMicBlockedNotice('需要「麦克风」权限才能收音，去系统设置里给 AirMic 开一下')
@@ -1088,7 +1150,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       }
       return true
     },
-    [send, transport],
+    [connected, send, transport],
   )
 
   const stopCapture = useCallback(() => {
@@ -1183,16 +1245,40 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setMicMode('idle')
       return
     }
+    if (!connected) {
+      setMicBlockedNotice('正在连接电脑，稍等一下')
+      reconnect()
+      return
+    }
     warnIfServerIdle()
     lastLoudAtRef.current = Date.now()
-    // 打开麦克风 → 触发「按下」磁片
-    fireTap(presetMagnet('press'))
-    void beginCapture('continuous')
     setMicMode('continuous')
-  }, [beginCapture, fireTap, micMode, presetMagnet, stopCapture, warnIfServerIdle])
+    // 采集真正起来之后再触发「按下」磁片；失败就回滚，别让界面假装在收音
+    void beginCapture('continuous').then((ok) => {
+      if (ok) {
+        fireTap(presetMagnet('press'))
+      } else {
+        setMicMode('idle')
+      }
+    })
+  }, [
+    beginCapture,
+    connected,
+    fireTap,
+    micMode,
+    presetMagnet,
+    reconnect,
+    stopCapture,
+    warnIfServerIdle,
+  ])
 
   const startPushToTalk = useCallback(() => {
     if (micMode === 'ptt') return
+    if (!connected) {
+      setMicBlockedNotice('正在连接电脑，稍等一下')
+      reconnect()
+      return
+    }
     warnIfServerIdle()
     // 长按语义：按下组合键但**不松开**，等手指抬起来才还原
     // 用的是「长按」自己绑定的磁片 / 磁片组，与「按下 / 松开」互相独立
@@ -1249,12 +1335,23 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       }
     }
     setMicMode('ptt')
-    void beginCapture('ptt')
+    void beginCapture('ptt').then((ok) => {
+      if (ok) return
+      // 采集没起来：把可能已经按住的键松开，界面回到待机
+      setMicMode('idle')
+      if (heldComboRef.current) {
+        send({ type: 'hotkey.up', combo: heldComboRef.current })
+        heldComboRef.current = null
+      }
+      heldGroupStepsRef.current = null
+    })
   }, [
     beginCapture,
+    connected,
     magnets,
     micMode,
     presetHoldBinding,
+    reconnect,
     send,
     sendAction,
     warnIfServerIdle,

@@ -191,6 +191,11 @@ airmic/
 - **地址过期自愈**：电脑休眠 / DHCP 后 IP 可能变化，旧 host 会一直连不上。自动重连失败后会重新扫
   `_airmic._tcp`，按电脑 id / 名字更新 host/port 再连；回到 App 时也会先扫一次。
 - 重试循环**不依赖** `appStateChange` 事件（部分机型会漏发）；否则会出现「界面一直转圈但从不重试」。
+- **回前台不要强制重连**：连接还在就直接用；发一次 `ping` 做健康检查（电脑端 0.6.2+ 的
+  `welcome.features` 含 `"ping"`），2 秒没回 pong 才标记断线并重连。老版本电脑端不支持
+  这个能力时跳过健康检查，避免误判。
+- **断连时点麦克风**：JS 先拦（提示「正在连接电脑」并触发重连），原生 `startMic` 再检查
+  `control.isConnected()`；`AirmicMicService.start` 包在 try/catch 里，避免前台服务启动异常崩 App。
 - 只有配对失效（`welcome.pairingRequired=true`）或用户主动断开 / 解绑才回设备页。
 - 部分 OEM（三星 / vivo 等）的电池策略仍可能杀前台服务，设置页已提示把 AirMic
   改成「不受限制」。

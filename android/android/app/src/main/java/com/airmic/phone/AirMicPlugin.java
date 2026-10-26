@@ -54,7 +54,7 @@ public class AirMicPlugin extends Plugin {
 
     private String deviceId;
     private String deviceName;
-    private String currentHost;
+    private volatile String currentHost;
     private int currentPort = 47471;
 
     /// 连接保活：App 退到后台且没有收音时，多久后允许断开（0 = 不断开）
@@ -146,6 +146,8 @@ public class AirMicPlugin extends Plugin {
             @Override public void onDisconnected(String error) {
                 cancelIdleTimer();
                 micActive = false;
+                // 旧地址不能再用：否则断连后点麦克风会拿它去启动采集
+                currentHost = null;
                 AirmicMicService.stop(getContext());
 
                 JSObject payload = new JSObject();
@@ -280,6 +282,7 @@ public class AirMicPlugin extends Plugin {
     public void disconnect(PluginCall call) {
         cancelIdleTimer();
         micActive = false;
+        currentHost = null;
         AirmicMicService.stop(getContext());
         if (control != null) control.disconnect();
         connecting.set(false);
@@ -308,8 +311,9 @@ public class AirMicPlugin extends Plugin {
     @PluginMethod
     public void startMic(PluginCall call) {
         String mode = call.getString("mode", "continuous");
-        if (currentHost == null) {
-            call.reject("还没连上电脑");
+        // 不只看 host：连接可能已经断了，必须确认控制通道真的还活着
+        if (currentHost == null || control == null || !control.isConnected()) {
+            call.reject("还没连上电脑，稍等一下再试");
             return;
         }
         // 没有麦克风权限就直接说清楚，别等下崩在服务里
@@ -320,7 +324,15 @@ public class AirMicPlugin extends Plugin {
         // 采集跑在前台服务里：切后台 / 锁屏都不会断
         micActive = true;
         cancelIdleTimer();
-        AirmicMicService.start(getContext(), currentHost, MicCapture.AUDIO_PORT, mode);
+        try {
+            AirmicMicService.start(getContext(), currentHost, MicCapture.AUDIO_PORT, mode);
+        } catch (Exception e) {
+            // Android 12+ 后台启动前台服务可能抛异常；不能让插件直接崩
+            micActive = false;
+            Log.e(TAG, "启动麦克风服务失败：" + e.getMessage());
+            call.reject("麦克风启动失败：" + e.getMessage());
+            return;
+        }
         call.resolve();
     }
 

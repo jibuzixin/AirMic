@@ -8,7 +8,7 @@
 
 手机负责收音和操作，电脑负责出声和执行快捷键 —— 局域网内直连，不经过任何服务器。
 
-[![version](https://img.shields.io/badge/version-0.6.2-FFB020?style=flat-square)](../../releases/latest)
+[![version](https://img.shields.io/badge/version-0.6.3-FFB020?style=flat-square)](../../releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-13%2B-0B0B0D?style=flat-square&logo=apple&logoColor=white)](../../releases/latest)
 [![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](../../releases/latest)
 [![LAN only](https://img.shields.io/badge/network-LAN%20only-35C98A?style=flat-square)](#隐私)
@@ -84,8 +84,8 @@ flowchart LR
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| macOS 13+ | `AirMic-0.6.2-macOS.zip` | 菜单栏应用，不占 Dock |
-| Android 6.0+ | `AirMic-v0.6.2-debug.apk` | Debug 签名，直接安装 |
+| macOS 13+ | `AirMic-0.6.3-macOS.zip` | 菜单栏应用，不占 Dock |
+| Android 6.0+ | `AirMic-v0.6.3-debug.apk` | Debug 签名，直接安装 |
 
 ### macOS
 

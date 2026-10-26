@@ -61,7 +61,8 @@ export function MicPage({
     dismissRemoteError,
     micAutoStopNotice,
     dismissMicAutoStop,
-    reconnect,
+    retryConnection,
+    reconnecting,
     disconnect,
     connectionError,
     micLevel,
@@ -296,7 +297,7 @@ export function MicPage({
           <div className="mb-2 flex items-center gap-2 px-1">
             <button
               type="button"
-              onClick={reconnect}
+              onClick={retryConnection}
               title={connectionError ?? undefined}
               className="flex min-w-0 items-center gap-1.5 text-[10px] text-text-tertiary active:opacity-70"
             >
@@ -305,7 +306,11 @@ export function MicPage({
                 style={{ background: 'var(--color-amber-accent)' }}
               />
               <span className="truncate">
-                {connectionError ? '连接不上，点此重试' : '正在重新连接…'}
+                {reconnecting
+                  ? '正在扫描电脑…'
+                  : connectionError
+                    ? '连接不上，点此重试'
+                    : '正在重新连接…'}
               </span>
             </button>
             <button

@@ -277,7 +277,7 @@ export function SettingsPage({
         </SectionCard>
 
         <p className="mt-4 text-center text-[10px] text-text-faint">
-          版本 0.6.2 · 构建 {__BUILD_TIME__}
+          版本 0.6.3 · 构建 {__BUILD_TIME__}
         </p>
       </div>
     </div>

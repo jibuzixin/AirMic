@@ -25,11 +25,12 @@
 
         </activity>
 
-        <!-- 麦克风前台服务：切后台 / 锁屏时收音不断 -->
+        <!-- 前台服务：收音时保活采集；不收音时只保持控制通道连接 -->
         <service
             android:name=".AirmicMicService"
             android:exported="false"
-            android:foregroundServiceType="microphone" />
+            android:stopWithTask="true"
+            android:foregroundServiceType="microphone|connectedDevice" />
 
         <provider
             android:name="androidx.core.content.FileProvider"
@@ -58,6 +59,8 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <!-- 熄屏 / 后台时维持与电脑的 TCP 连接（不收音） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- WebView 的震动 API 需要这个权限 -->
     <uses-permission android:name="android.permission.VIBRATE" />

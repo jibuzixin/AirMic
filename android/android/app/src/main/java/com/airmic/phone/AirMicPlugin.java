@@ -6,6 +6,8 @@ import android.content.Context;
 import android.view.Window;
 import android.net.wifi.WifiManager;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 
 import com.getcapacitor.JSObject;
@@ -43,6 +45,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class AirMicPlugin extends Plugin {
 
     private static final String TAG = "AirMicPlugin";
+    private static final String PREFS = "airmic";
+    private static final String PREF_LINK_IDLE_MINUTES = "linkIdleMinutes";
 
     private DeviceScanner scanner;
     private ControlClient control;
@@ -53,12 +57,23 @@ public class AirMicPlugin extends Plugin {
     private String currentHost;
     private int currentPort = 47471;
 
+    /// 连接保活：App 退到后台且没有收音时，多久后允许断开（0 = 不断开）
+    private volatile int linkIdleMinutes = 60;
+    private Handler idleHandler;
+    private volatile boolean appActive = true;
+    private volatile boolean micActive = false;
+
     private final AtomicBoolean connecting = new AtomicBoolean(false);
     /// 电平事件上一次发送时间（限频用）
     private long lastLevelEmitAt = 0;
 
     @Override
     public void load() {
+        idleHandler = new Handler(Looper.getMainLooper());
+        appActive = true;
+        linkIdleMinutes = getContext()
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(PREF_LINK_IDLE_MINUTES, 60);
         // 强制 edge-to-edge：页面画到状态栏下面，颜色由我们自己的背景决定，
         // 不会出现「系统画一条白底」的观感。Android 15 本来就会强制，
         // 这里让 14 及以下保持一致。
@@ -97,6 +112,21 @@ public class AirMicPlugin extends Plugin {
 
         control = new ControlClient(new ControlClient.Listener() {
             @Override public void onMessage(JSONObject message) {
+                // 握手成功后才开始「只保持连接」的前台服务：
+                // 配对被拒 / 还在等确认时不要挂一条「已连接」的通知。
+                String type = message.optString("type");
+                if ("welcome".equals(type)) {
+                    if (!message.optBoolean("pairingRequired", false)) {
+                        startLinkIfIdle();
+                    } else {
+                        // 需要重新配对：先把「已连接」的前台服务停掉
+                        cancelIdleTimer();
+                        AirmicMicService.stop(getContext());
+                    }
+                } else if ("pair.respond".equals(type) && message.optBoolean("approved", false)) {
+                    startLinkIfIdle();
+                }
+
                 JSObject payload = new JSObject();
                 try {
                     payload.put("payload", message);
@@ -114,6 +144,10 @@ public class AirMicPlugin extends Plugin {
             }
 
             @Override public void onDisconnected(String error) {
+                cancelIdleTimer();
+                micActive = false;
+                AirmicMicService.stop(getContext());
+
                 JSObject payload = new JSObject();
                 payload.put("connected", false);
                 payload.put("error", error == null ? "连接断开" : error);
@@ -124,7 +158,22 @@ public class AirMicPlugin extends Plugin {
     }
 
     @Override
+    protected void handleOnResume() {
+        appActive = true;
+        scheduleIdleDisconnect();
+        super.handleOnResume();
+    }
+
+    @Override
+    protected void handleOnPause() {
+        appActive = false;
+        scheduleIdleDisconnect();
+        super.handleOnPause();
+    }
+
+    @Override
     protected void handleOnDestroy() {
+        cancelIdleTimer();
         if (scanner != null) scanner.stop();
         if (control != null) control.disconnect();
         AirmicMicService.stop(getContext());
@@ -224,6 +273,8 @@ public class AirMicPlugin extends Plugin {
 
     @PluginMethod
     public void disconnect(PluginCall call) {
+        cancelIdleTimer();
+        micActive = false;
         AirmicMicService.stop(getContext());
         if (control != null) control.disconnect();
         connecting.set(false);
@@ -262,6 +313,8 @@ public class AirMicPlugin extends Plugin {
             return;
         }
         // 采集跑在前台服务里：切后台 / 锁屏都不会断
+        micActive = true;
+        cancelIdleTimer();
         AirmicMicService.start(getContext(), currentHost, MicCapture.AUDIO_PORT, mode);
         call.resolve();
     }
@@ -273,8 +326,86 @@ public class AirMicPlugin extends Plugin {
 
     @PluginMethod
     public void stopMic(PluginCall call) {
-        AirmicMicService.stop(getContext());
+        micActive = false;
+        // 还在连接就切回「只保持连接」，而不是把前台服务整个停掉 ——
+        // 这样后台状态下也不会因为重新启动服务被系统限制。
+        // 如果切不过去（个别系统限制后台启动前台服务），就把服务停掉，
+        // 绝不能留下一个还在录音的服务。
+        if (!startLinkIfIdle()) {
+            AirmicMicService.stop(getContext());
+        }
         call.resolve();
+    }
+
+    /* -------------------------------------------------------------- *
+     * 连接保活
+     * -------------------------------------------------------------- */
+
+    /**
+     * 设置「后台闲置多久后允许断开」。
+     *
+     * @param minutes 30 / 60 / 120 / 0（0 = 不自动断开）
+     */
+    @PluginMethod
+    public void setLinkIdleMinutes(PluginCall call) {
+        int minutes = call.getInt("minutes", 60);
+        if (minutes != 0 && minutes != 30 && minutes != 60 && minutes != 120) {
+            minutes = 60;
+        }
+        linkIdleMinutes = minutes;
+        getContext()
+            .getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit()
+            .putInt(PREF_LINK_IDLE_MINUTES, minutes)
+            .apply();
+        scheduleIdleDisconnect();
+        call.resolve();
+    }
+
+    /** 已配对/握手完成、且没在收音时，启动「只保持连接」的前台服务 */
+    private boolean startLinkIfIdle() {
+        if (micActive || control == null || !control.isConnected()) return false;
+        try {
+            AirmicMicService.startLink(getContext());
+        } catch (Exception e) {
+            Log.w(TAG, "启动连接保活服务失败：" + e.getMessage());
+            return false;
+        }
+        scheduleIdleDisconnect();
+        return true;
+    }
+
+    private void cancelIdleTimer() {
+        if (idleHandler != null) {
+            idleHandler.removeCallbacksAndMessages(null);
+        }
+    }
+
+    /**
+     * App 在后台、没在收音时，安排一次闲置断开。
+     *
+     * <p>前台 / 正在收音都会取消计时；这样熄屏几分钟不会断，
+     * 真正长时间不用才释放连接。
+     */
+    private void scheduleIdleDisconnect() {
+        if (idleHandler == null) return;
+        idleHandler.removeCallbacksAndMessages(null);
+        if (appActive || micActive || linkIdleMinutes <= 0) return;
+        if (control == null || !control.isConnected()) return;
+
+        final int minutes = linkIdleMinutes;
+        idleHandler.postDelayed(() -> {
+            if (appActive || micActive) return;
+            if (control == null || !control.isConnected()) return;
+            Log.i(TAG, "后台闲置 " + minutes + " 分钟，断开连接");
+            control.disconnect();
+            AirmicMicService.stop(getContext());
+
+            JSObject payload = new JSObject();
+            payload.put("connected", false);
+            payload.put("error", "闲置超时，已断开连接");
+            notifyListeners("connection", payload);
+        }, minutes * 60_000L);
     }
 
     /* -------------------------------------------------------------- *

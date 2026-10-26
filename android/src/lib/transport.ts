@@ -29,21 +29,27 @@ export interface AirMicTransport {
   disconnect(): Promise<void>
   /** 发一条控制消息 */
   send(message: Record<string, unknown>): Promise<void>
-  /** 收到电脑端的消息 */
-  onMessage(handler: (message: Record<string, any>) => void): void
+  /** 收到电脑端的消息（返回取消订阅函数） */
+  onMessage(handler: (message: Record<string, any>) => void): () => void
   /** 开始 / 停止手机麦克风（推流） */
   startMic(mode: 'continuous' | 'ptt'): Promise<void>
   stopMic(): Promise<void>
-  /** 连接状态变化 */
-  onConnection(handler: (state: { connected: boolean; error?: string }) => void): void
-  /** 真实麦克风电平（0–1） */
-  onLevel(handler: (level: number) => void): void
+  /** 连接状态变化（返回取消订阅函数） */
+  onConnection(handler: (state: { connected: boolean; error?: string }) => void): () => void
+  /** 真实麦克风电平（0–1，返回取消订阅函数） */
+  onLevel(handler: (level: number) => void): () => void
   /** 系统栏高度（CSS px）—— 页面铺满全屏，需要自己留边距 */
   getInsets(): Promise<{ top: number; bottom: number }>
   /** 设置状态栏图标明暗（浅色背景 → 深色图标） */
   setSystemBars(lightBackground: boolean): Promise<void>
-  /** App 回到前台 / 退到后台 */
-  onAppStateChange(handler: (active: boolean) => void): void
+  /** App 回到前台 / 退到后台（返回取消订阅函数） */
+  onAppStateChange(handler: (active: boolean) => void): () => void
+  /**
+   * 后台闲置多久后允许断开（分钟，0 = 不自动断开）。
+   *
+   * 连接期间原生层会挂一个前台服务，熄屏也保持 TCP；闲置超时才释放。
+   */
+  setLinkIdleMinutes(minutes: number): Promise<void>
 }
 
 /* ------------------------------------------------------------------ *
@@ -63,7 +69,8 @@ interface AirMicNativePlugin {
   send(options: { payload: string }): Promise<void>
   startMic(options: { mode: string }): Promise<void>
   stopMic(): Promise<void>
-  addListener(event: string, handler: (data: any) => void): Promise<{ remove: () => void }>
+  setLinkIdleMinutes(options: { minutes: number }): Promise<void>
+  addListener(event: string, handler: (data: any) => void): Promise<{ remove: () => Promise<void> }>
 }
 
 const AirMicNative = registerPlugin<AirMicNativePlugin>('AirMic')
@@ -118,16 +125,36 @@ class NativeTransport implements AirMicTransport {
     await AirMicNative.stopMic()
   }
 
-  onMessage(handler: (message: Record<string, any>) => void): void {
-    void AirMicNative.addListener('message', (data) => handler(data.payload))
+  async setLinkIdleMinutes(minutes: number): Promise<void> {
+    await AirMicNative.setLinkIdleMinutes({ minutes })
   }
 
-  onConnection(handler: (state: { connected: boolean; error?: string }) => void): void {
-    void AirMicNative.addListener('connection', (data) => handler(data))
+  private subscribe(
+    event: string,
+    handler: (data: any) => void,
+  ): () => void {
+    let removed = false
+    let handle: { remove: () => Promise<void> } | null = null
+    void AirMicNative.addListener(event, handler).then((h) => {
+      if (removed) void h.remove()
+      else handle = h
+    })
+    return () => {
+      removed = true
+      if (handle) void handle.remove()
+    }
   }
 
-  onLevel(handler: (level: number) => void): void {
-    void AirMicNative.addListener('level', (data) => handler(Number(data.level) || 0))
+  onMessage(handler: (message: Record<string, any>) => void): () => void {
+    return this.subscribe('message', (data) => handler(data.payload))
+  }
+
+  onConnection(handler: (state: { connected: boolean; error?: string }) => void): () => void {
+    return this.subscribe('connection', handler)
+  }
+
+  onLevel(handler: (level: number) => void): () => void {
+    return this.subscribe('level', (data) => handler(Number(data.level) || 0))
   }
 
   async getInsets(): Promise<{ top: number; bottom: number }> {
@@ -138,8 +165,17 @@ class NativeTransport implements AirMicTransport {
     await AirMicNative.setSystemBars({ light: lightBackground })
   }
 
-  onAppStateChange(handler: (active: boolean) => void): void {
-    void App.addListener('appStateChange', (state) => handler(state.isActive))
+  onAppStateChange(handler: (active: boolean) => void): () => void {
+    let removed = false
+    let handle: { remove: () => Promise<void> } | null = null
+    void App.addListener('appStateChange', (state) => handler(state.isActive)).then((h) => {
+      if (removed) void h.remove()
+      else handle = h
+    })
+    return () => {
+      removed = true
+      if (handle) void handle.remove()
+    }
   }
 }
 
@@ -213,17 +249,28 @@ class LoopbackTransport implements AirMicTransport {
     await delay(100)
   }
 
-  onMessage(handler: (message: Record<string, any>) => void): void {
+  async setLinkIdleMinutes(): Promise<void> {
+    /* 开发模式不保活 */
+  }
+
+  onMessage(handler: (message: Record<string, any>) => void): () => void {
     this.messageHandlers.push(handler)
+    return () => {
+      this.messageHandlers = this.messageHandlers.filter((item) => item !== handler)
+    }
   }
 
-  onConnection(handler: (state: { connected: boolean; error?: string }) => void): void {
+  onConnection(handler: (state: { connected: boolean; error?: string }) => void): () => void {
     this.connectionHandlers.push(handler)
+    return () => {
+      this.connectionHandlers = this.connectionHandlers.filter((item) => item !== handler)
+    }
   }
 
-  onLevel(handler: (level: number) => void): void {
+  onLevel(handler: (level: number) => void): () => void {
     /* 开发模式没有真实电平 */
     void handler
+    return () => {}
   }
 
   async getInsets(): Promise<{ top: number; bottom: number }> {
@@ -234,8 +281,9 @@ class LoopbackTransport implements AirMicTransport {
     /* 开发模式没有系统栏 */
   }
 
-  onAppStateChange(): void {
+  onAppStateChange(): () => void {
     /* 开发模式没有前后台切换 */
+    return () => {}
   }
 
   private emit(message: Record<string, any>) {

@@ -62,6 +62,7 @@ export function MicPage({
     micAutoStopNotice,
     dismissMicAutoStop,
     reconnect,
+    disconnect,
     micLevel,
   } = useAirmic()
   const preset = useActivePreset()
@@ -291,14 +292,27 @@ export function MicPage({
           )}
         </div>
         {!connected && (
-          <button
-            type="button"
-            onClick={reconnect}
-            className="mb-2 flex w-full items-center justify-center gap-1.5 rounded-[10px] border border-border-subtle bg-surface-1 py-1.5 text-[11px] text-text-secondary active:scale-[0.99]"
-          >
-            <RefreshCw size={11} strokeWidth={1.8} />
-            未连接电脑 · 点此重连
-          </button>
+          <div className="mb-2 flex items-stretch gap-1.5">
+            <button
+              type="button"
+              onClick={reconnect}
+              className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-border-subtle bg-surface-1 py-1.5 text-[11px] text-text-secondary active:scale-[0.99]"
+            >
+              <RefreshCw
+                size={11}
+                strokeWidth={1.8}
+                className="animate-spin"
+              />
+              正在重新连接…
+            </button>
+            <button
+              type="button"
+              onClick={disconnect}
+              className="shrink-0 rounded-[10px] border border-border-subtle bg-surface-1 px-3 text-[11px] text-text-tertiary active:scale-[0.99]"
+            >
+              换设备
+            </button>
+          </div>
         )}
       </header>
 

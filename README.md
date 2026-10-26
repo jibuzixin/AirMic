@@ -8,7 +8,7 @@
 
 手机负责收音和操作，电脑负责出声和执行快捷键 —— 局域网内直连，不经过任何服务器。
 
-[![version](https://img.shields.io/badge/version-0.5.1-FFB020?style=flat-square)](../../releases/latest)
+[![version](https://img.shields.io/badge/version-0.6.0-FFB020?style=flat-square)](../../releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-13%2B-0B0B0D?style=flat-square&logo=apple&logoColor=white)](../../releases/latest)
 [![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](../../releases/latest)
 [![LAN only](https://img.shields.io/badge/network-LAN%20only-35C98A?style=flat-square)](#隐私)
@@ -38,7 +38,8 @@
 - **按应用切换预案**：电脑前台切到微信 / 浏览器 / 剪辑软件，手机自动换成对应的一套磁贴和麦克风绑定。
 - **文本磁片**：磁片里可以存一段提前写好的文字，触发时电脑直接粘贴到当前输入框，支持多行和中文。
 - **磁片组**：多个快捷键按顺序、按间隔执行；也可以绑到麦克风长按上（第一步按住，松手后执行其余步骤）。
-- **省电**：静默 30 秒自动停止收音（可调）；手机端有前台服务，锁屏后仍然工作。
+- **熄屏保活**：手机锁屏后仍和电脑保持连接（只有一条低优先级通知，不收麦克风），回来直接说话；后台闲置 30 分钟 / 1 小时 / 2 小时或永不自动断开，可在设置里选。
+- **省电**：静默 30 秒自动停止收音（可调）；收音和连接都跑在前台服务里，锁屏后不会被系统冻结。
 
 ## 预览
 
@@ -83,8 +84,8 @@ flowchart LR
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| macOS 13+ | `AirMic-0.5.1-macOS.zip` | 菜单栏应用，不占 Dock |
-| Android 6.0+ | `AirMic-v0.5.1-debug.apk` | Debug 签名，直接安装 |
+| macOS 13+ | `AirMic-0.6.0-macOS.zip` | 菜单栏应用，不占 Dock |
+| Android 6.0+ | `AirMic-v0.6.0-debug.apk` | Debug 签名，直接安装 |
 
 ### macOS
 
@@ -124,7 +125,7 @@ flowchart LR
 | **点按**麦克风按钮 | 打开 / 关闭常开收音 |
 | **长按**麦克风按钮 | 按住说话，松手停止 |
 | 点顶部「预案」 | 管理预案 |
-| 点顶部「设置」 | 主题、震动、省电、解绑 |
+| 点顶部「设置」 | 主题、震动、省电、连接保活、解绑 |
 | 点底部磁贴 | 执行快捷键 / 粘贴文本 |
 | 长按底部磁贴 | 按住组合键（撤销、删除等会自动连发） |
 | 点磁片组磁贴 | 按顺序、按间隔执行整组 |
@@ -186,6 +187,17 @@ flowchart LR
 - 确认电脑端 AirMic 正在运行，且只运行了一个实例。
 - macOS 防火墙如果拦截了 AirMic，请在「防火墙选项」里允许。
 - 回到手机端点「刷新设备」重新扫描。
+
+</details>
+
+<details>
+<summary><strong>手机熄屏几分钟后要不要重新连？</strong></summary>
+
+不需要。连接期间 AirMic 会用一个低优先级前台服务维持控制通道（不收音，也不申请唤醒锁），熄屏几分钟回来仍然是已连接状态。
+
+设置 → 省电 → **闲置后断开连接** 可以选 30 分钟 / 1 小时 / 2 小时 / 不自动断开。只有手机退到后台且没有收音时才开始计时；超时断开后，下次打开会自动重连，不会退回设备页。
+
+如果某些品牌的省电策略仍然杀后台，把 AirMic 的电池设置改成「不受限制」。
 
 </details>
 
@@ -308,6 +320,7 @@ airmic/
 - APK 是 Debug 签名，没有上架应用商店。
 - 只支持局域网，不支持跨网络 / NAT 穿透。
 - 音频编码是 AAC-LC，暂未使用 Opus。
+- 熄屏保活依赖 Android 前台服务，通知栏会有一条常驻提示；部分品牌的省电策略仍可能杀后台。
 
 ## 文档
 

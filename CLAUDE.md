@@ -94,7 +94,7 @@ airmic/
 │       ├── DeviceScanner.java        mDNS 扫描（组播锁）
 │       ├── ControlClient.java        TCP + JSON Lines
 │       ├── MicCapture.java           AudioRecord → AAC → UDP（线程生命周期）
-│       ├── AirmicMicService.java     前台服务（保活）
+│       ├── AirmicMicService.java     前台服务：收音 / 只保持连接（connectedDevice）
 │       └── TokenStore.java           长期 token
 │
 ├── prototype/                   原型（**交互/视觉真相源，别删**）
@@ -175,6 +175,23 @@ airmic/
 - 没有键可以「按住」，所以文本磁片在长按位置就是**按下时粘贴一次**。
   磁片组绑到长按时，组里**第一个有组合键的步骤**才是按住的那一个。
 
+### 4.9 连接保活与断线重连
+
+- 握手成功（`welcome.pairingRequired=false` 或 `pair.respond approved`）后，原生层把
+  `AirmicMicService` 切到 **link 模式**：`connectedDevice` 类型的前台服务，不采集音频，
+  只让进程在熄屏 / 后台时不被冻结。没有 WakeLock，也没有 WifiLock。
+- 收音时同一个 Service 切到 `microphone` 类型；停止收音再切回 link，共用同一条低优先级通知。
+- 心跳：电脑端收音时 2 秒一次、空转时 10 秒一次；手机原生 `ControlClient` 直接回 pong
+  （WebView 在后台挂起也照常回），不依赖 JS 定时器。
+- 闲置断开：手机**退到后台且没有收音**时，按设置 `linkIdleMinutes`（默认 60）计时，
+  超时才断开；前台或收音中不计时。`0` = 不自动断开。设置存在手机 localStorage，
+  同时同步给原生 SharedPreferences。
+- 断线不再退回设备页：留在麦克风页显示「正在重新连接…」，前台按 300ms → 30s 退避重连；
+  回到前台超过 2 秒且没在收音时强制重建 TCP（旧 socket 可能已经是假连接）。
+- 只有配对失效（`welcome.pairingRequired=true`）或用户主动断开 / 解绑才回设备页。
+- 部分 OEM（三星 / vivo 等）的电池策略仍可能杀前台服务，设置页已提示把 AirMic
+  改成「不受限制」。
+
 ---
 
 ## 5. 数据模型（两端一致）
@@ -251,6 +268,8 @@ AIRMIC_PORT=47482 node tools/fake-phone.mjs # 换端口（避免和正在跑的 
 | 按磁贴没反应、像闪退 | 两个 AirMic 实例抢端口 | 单实例保护 + 先退出旧实例；真机排查看诊断日志 |
 | 电脑端面板展开/收起内容叠在一起 | `MenuBarExtra` 自己在改窗口高度 | 用 NSPanel，高度只由我们动画 |
 | 安卓返回键直接退到桌面 | 没有返回栈 / 依赖注册顺序 | `back-stack.tsx`，按优先级排队 |
+| 手机熄屏几分钟就显示断连 | 没有前台服务，进程被系统冻结；断线后 3 秒又退回设备页 | link 模式前台服务 + 10s 心跳 + 原生 pong；断线留在麦克风页自动重连（§4.9） |
+| Android 14 起前台服务崩溃 | 声明了 `foregroundServiceType` 但 `startForeground` 没带类型 | link 用 `CONNECTED_DEVICE`、收音用 `MICROPHONE`，并声明对应的 `FOREGROUND_SERVICE_*` 权限 |
 | 长按触发系统选字/菜单 | WebView 默认允许选择 | `index.css` 里全局 `user-select/touch-callout: none`，输入框例外 |
 | 电脑端配置一直不更新 | 手机推的磁贴带 `groupId`（磁片组），电脑端 `Tile.magnetId` 必填 → 整条 `config.push` 解码失败 | `Tile.magnetId` 可选；`sanitize` 保留 `groupId` 磁贴 |
 | 开麦瞬间「噗」一声 | AAC 编码器 priming 瞬态 | 写入端每段音频开始强制 15ms 淡入 |

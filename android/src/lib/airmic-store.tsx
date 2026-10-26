@@ -78,6 +78,8 @@ type Persisted = {
   theme: ThemeMode
   /** 静默多少秒自动关麦（0 = 关） */
   silenceSeconds: number
+  /** 后台闲置多少分钟后允许断开连接（0 = 不断开） */
+  linkIdleMinutes: number
   /** 磁片组 */
   groups: MagnetGroup[]
   /** 震动反馈开关 */
@@ -98,6 +100,7 @@ function loadPersisted(): Persisted {
     devicePort: null,
     theme: 'system',
     silenceSeconds: 30,
+    linkIdleMinutes: 60,
     groups: [],
     hapticsEnabled: true,
     hapticStrength: 'normal',
@@ -140,6 +143,13 @@ function loadPersisted(): Persisted {
           : typeof parsed.silenceSeconds === 'number'
             ? parsed.silenceSeconds
             : 30,
+      linkIdleMinutes:
+        parsed.linkIdleMinutes === 0 ||
+        parsed.linkIdleMinutes === 30 ||
+        parsed.linkIdleMinutes === 60 ||
+        parsed.linkIdleMinutes === 120
+          ? parsed.linkIdleMinutes
+          : 60,
       groups: parsed.groups ?? [],
       hapticsEnabled: parsed.hapticsEnabled !== false,
       hapticStrength: parsed.hapticStrength === 'light' ? 'light' : 'normal',
@@ -190,6 +200,8 @@ export type AirmicStore = {
   shouldWarnServerIdle: boolean
   /** 静默自动关麦（秒，0 = 关） */
   silenceSeconds: number
+  /** 后台闲置多少分钟后允许断开连接（0 = 不断开） */
+  linkIdleMinutes: number
   /** 静默自动关麦的提示 */
   micAutoStopNotice: string | null
   /** 外观模式 */
@@ -264,6 +276,7 @@ export type AirmicStore = {
   /* --- 省电 / 连接 --- */
   /** 静默多少秒自动关麦（0 = 关） */
   setSilenceSeconds: (seconds: number) => void
+  setLinkIdleMinutes: (minutes: number) => void
   dismissMicAutoStop: () => void
   /** 主动重连（回到前台 / 断线时用） */
   reconnect: () => void
@@ -300,6 +313,8 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   )
   /** 真正的连接状态（paired 只是「配对过」） */
   const [connected, setConnected] = useState(false)
+  /** App 是否在前台 —— 后台时不做重连轮询 */
+  const [appActive, setAppActive] = useState(true)
   /** 电脑端的收音是用户手动关的吗（false = 静默自动关） */
   const [serverStoppedByUser, setServerStoppedByUser] = useState(true)
   const [knownDevices, setKnownDevices] = useState<Device[]>([])
@@ -340,6 +355,10 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   /** 静默自动关麦（秒，0 = 关） */
   const [silenceSeconds, setSilenceSecondsState] = useState<number>(
     persisted.silenceSeconds ?? 30,
+  )
+  /** 后台闲置多久后允许断开（分钟，0 = 不断开） */
+  const [linkIdleMinutes, setLinkIdleMinutesState] = useState<number>(
+    persisted.linkIdleMinutes ?? 60,
   )
   /** 静默自动关麦的提示 */
   const [micAutoStopNotice, setMicAutoStopNotice] = useState<string | null>(null)
@@ -389,6 +408,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         devicePort: persisted.devicePort,
         theme: themeMode,
         silenceSeconds,
+        linkIdleMinutes,
         groups,
         hapticsEnabled,
         hapticStrength,
@@ -399,12 +419,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       } catch {
         /* 存不下就算了，不影响本次会话 */
       }
+      // 同步更新内存快照：首次配对 / 连接后，reconnect() 立刻就能拿到
+      // token 和 host，不用等下次冷启动。
+      Object.assign(persisted, next)
     },
     [
       appList,
       groups,
       hapticStrength,
       hapticsEnabled,
+      linkIdleMinutes,
       magnets,
       persisted,
       presets,
@@ -430,12 +454,29 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   /** 最后一次检测到有效声音的时间（静默检测用） */
   const lastLoudAtRef = useRef(Date.now())
-  /** 断线后回设备页的延时器 */
-  const disconnectTimerRef = useRef<number | null>(null)
+  /** 退到后台的时间（用来判断是不是真的熄屏了一阵） */
+  const backgroundedAtRef = useRef<number | null>(null)
+  /** 原生事件回调里读取最新状态，避免闭包过期 */
+  const micModeRef = useRef(micMode)
+  const pairedRef = useRef(paired)
+  useEffect(() => {
+    micModeRef.current = micMode
+  }, [micMode])
+  useEffect(() => {
+    pairedRef.current = paired
+  }, [paired])
+
+  /** 防止重连轮询和启动连接同时打两次 */
+  const connectInFlightRef = useRef(false)
+  /** 上一次发起连接的时间：给 welcome 留出到达时间，避免重复连 */
+  const lastConnectAtRef = useRef(0)
 
   /** 主动重连（回到前台、连接断开时用） */
   const reconnect = useCallback(() => {
     if (!persisted.token || !persisted.deviceHost) return
+    if (connectInFlightRef.current) return
+    connectInFlightRef.current = true
+    lastConnectAtRef.current = Date.now()
     setConnectionError(null)
     void transport
       .connect({
@@ -447,15 +488,81 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       .catch((error: Error) => {
         setConnectionError(error.message || '连不上电脑，确认电脑端还在运行')
       })
+      .finally(() => {
+        connectInFlightRef.current = false
+      })
   }, [persisted, transport])
 
-  /** 回到前台时自动补一次连接 */
+  /**
+   * 回到前台：
+   * - 离开超过 2 秒、且没在收音 → 强制重建连接（旧 socket 可能已经僵死）
+   * - 离开时间很短 → 不动，避免切一下通知栏就断开
+   */
   useEffect(() => {
-    transport.onAppStateChange((active) => {
-      if (!active) return
-      if (persisted.token && !connected) reconnect()
+    return transport.onAppStateChange((active) => {
+      if (!active) {
+        backgroundedAtRef.current = Date.now()
+        setAppActive(false)
+        return
+      }
+      const away = backgroundedAtRef.current
+        ? Date.now() - backgroundedAtRef.current
+        : 0
+      backgroundedAtRef.current = null
+      setAppActive(true)
+      if (
+        away > 2000 &&
+        pairedRef.current &&
+        persisted.token &&
+        micModeRef.current === 'idle'
+      ) {
+        // 标记成未连接，让下面的重连 effect 接手
+        setConnected(false)
+      }
     })
-  }, [connected, persisted.token, reconnect, transport])
+  }, [persisted.token, transport])
+
+  /**
+   * 断线自动重连。
+   *
+   * 只在 App 前台时轮询，退到后台就停 —— 后台靠原生前台服务保持连接，
+   * 不靠 JS 定时器。退避到 30 秒一次，避免电脑没开时一直打网络。
+   */
+  useEffect(() => {
+    if (!appActive || connected || !paired) return
+    if (!persisted.token || !persisted.deviceHost) return
+
+    let cancelled = false
+    let attempt = 0
+    let timer: number | null = null
+    const delays = [500, 1000, 2000, 5000, 10000, 20000, 30000]
+
+    const tick = () => {
+      if (cancelled) return
+      if (
+        !connectInFlightRef.current &&
+        Date.now() - lastConnectAtRef.current > 1500
+      ) {
+        reconnect()
+      }
+      const delay = delays[Math.min(attempt, delays.length - 1)]
+      attempt += 1
+      timer = window.setTimeout(tick, delay)
+    }
+
+    timer = window.setTimeout(tick, 300)
+    return () => {
+      cancelled = true
+      if (timer !== null) window.clearTimeout(timer)
+    }
+  }, [
+    appActive,
+    connected,
+    paired,
+    persisted.deviceHost,
+    persisted.token,
+    reconnect,
+  ])
 
   const setHapticsEnabled = useCallback(
     (enabled: boolean) => {
@@ -490,6 +597,22 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     [persist],
   )
 
+  const setLinkIdleMinutes = useCallback(
+    (minutes: number) => {
+      const value = [0, 30, 60, 120].includes(minutes) ? minutes : 60
+      setLinkIdleMinutesState(value)
+      persist({ linkIdleMinutes: value })
+    },
+    [persist],
+  )
+
+  /** 把保活设置同步给原生层（原生会持久化一份） */
+  useEffect(() => {
+    void transport.setLinkIdleMinutes(linkIdleMinutes).catch(() => {
+      /* 老版本原生插件没有这个方法时忽略 */
+    })
+  }, [linkIdleMinutes, transport])
+
   const dismissMicAutoStop = useCallback(() => setMicAutoStopNotice(null), [])
 
   /* ---------- 启动时自动连上上次的电脑 ---------- */
@@ -497,18 +620,16 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   // 需求：配对一次成功后，下次打开**直接进麦克风页**，不用再点一遍。
   useEffect(() => {
     if (!persisted.token || !persisted.deviceHost) return
-    void transport
-      .connect({
-        deviceId: persisted.deviceId ?? 'saved',
-        host: persisted.deviceHost,
-        port: persisted.devicePort ?? 47471,
-        token: persisted.token ?? undefined,
-      })
-      .catch(() => {
-        /* 连不上就回到设备页，让用户手动刷新 */
-      })
+    reconnect()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  /** 老版本只存了 token、没存地址 → 回设备页重新选一次，别卡在重连横幅上 */
+  useEffect(() => {
+    if (paired && persisted.token && !persisted.deviceHost) {
+      setPaired(false)
+    }
+  }, [paired, persisted.deviceHost, persisted.token])
 
   /* ---------- 外观 ---------- */
   useEffect(() => {
@@ -575,17 +696,14 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
 
   /* ---------- 收到电脑端的消息 ---------- */
   useEffect(() => {
-    transport.onMessage((message) => {
+    const offMessage = transport.onMessage((message) => {
       switch (message.type) {
         case 'welcome': {
           const required = message.pairingRequired === true
           setPaired(!required)
           if (!required) {
             setConnected(true)
-            if (disconnectTimerRef.current) {
-              window.clearTimeout(disconnectTimerRef.current)
-              disconnectTimerRef.current = null
-            }
+            setConnectionError(null)
           }
           // 需要配对、而且是用户刚点了这台设备 → 这时候才发配对请求
           if (required && pairingDevice) {
@@ -632,7 +750,14 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
             // 顶部要显示「已连接 · 设备名」—— 设备信息这时候才补上
             if (pairingDevice) setPairedDevice(pairingDevice)
             setPairingRequest(null)
-            persist({ token: message.token })
+            persist({
+              token: message.token,
+              // 把地址一起存下来：配对后就能直接自动重连
+              deviceId: pairingDevice?.id ?? persisted.deviceId,
+              deviceName: pairingDevice?.name ?? persisted.deviceName,
+              deviceHost: pairingDevice?.host ?? persisted.deviceHost,
+              devicePort: pairingDevice?.port ?? persisted.devicePort,
+            })
             // 原生侧也存一份，重连时自动带上
             void transport.saveToken(deviceInfo.deviceId, message.token)
           } else {
@@ -681,12 +806,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
             })
           }
           break
-        case 'ping':
-          // 电脑端用来测网络往返；原样回显时间戳
-          if (typeof message.t === 'number') {
-            send({ type: 'pong', t: message.t })
-          }
-          break
         case 'mic.state':
           setServerRunning(message.mode !== 'idle')
           break
@@ -695,30 +814,34 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       }
     })
 
-    transport.onLevel((level) => {
+    const offLevel = transport.onLevel((level) => {
       setMicLevel(level)
       if (level > 0.02) lastLoudAtRef.current = Date.now()
     })
 
-    transport.onConnection((state) => {
+    const offConnection = transport.onConnection((state) => {
       setConnected(state.connected)
       if (state.connected) {
-        if (disconnectTimerRef.current) {
-          window.clearTimeout(disconnectTimerRef.current)
-          disconnectTimerRef.current = null
-        }
+        setConnectionError(null)
         return
       }
       if (state.error) setConnectionError(state.error)
-      // 电脑端退出 / 连接断开：等 3 秒还没恢复就退回设备页（重新扫描）
-      if (disconnectTimerRef.current) window.clearTimeout(disconnectTimerRef.current)
-      disconnectTimerRef.current = window.setTimeout(() => {
-        disconnectTimerRef.current = null
-        setPaired(false)
+
+      // ⚠️ 断线不再退回设备页 —— 用户熄屏几分钟回来，应该还在麦克风页，
+      // 由上面的重连 effect 自动续上。只有用户主动断开 / 配对失效才回设备页。
+      // 真的断线时把收音停掉：声音已经传不过去了。
+      if (micModeRef.current !== 'idle') {
         setMicMode('idle')
-        stopCapture()
-      }, 3000)
+        setMicLevel(0)
+        void transport.stopMic()
+      }
     })
+
+    return () => {
+      offMessage()
+      offLevel()
+      offConnection()
+    }
   }, [
     bufferMs,
     deviceInfo.deviceId,
@@ -838,17 +961,20 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (pairedDevice?.id === deviceId) {
       setPairedDevice(null)
       setPaired(false)
+      setConnected(false)
     }
   }, [pairedDevice])
 
   const disconnect = useCallback(() => {
     void transport.disconnect()
+    setConnected(false)
     setPaired(false)
     setMicMode('idle')
   }, [transport])
 
   const unpair = useCallback(() => {
     void transport.disconnect()
+    setConnected(false)
     setPaired(false)
     setPairedDevice(null)
     setMicMode('idle')
@@ -1383,6 +1509,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       serverStoppedByUser,
       shouldWarnServerIdle,
       silenceSeconds,
+      linkIdleMinutes,
       micAutoStopNotice,
       themeMode,
       insets,
@@ -1425,6 +1552,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       fetchCurrentApp,
       setThemeMode,
       setSilenceSeconds,
+      setLinkIdleMinutes,
       dismissMicAutoStop,
       reconnect,
       hapticsEnabled,
@@ -1461,6 +1589,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       serverStoppedByUser,
       shouldWarnServerIdle,
       silenceSeconds,
+      linkIdleMinutes,
       micAutoStopNotice,
       themeMode,
       insets,
@@ -1503,6 +1632,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       fetchCurrentApp,
       setThemeMode,
       setSilenceSeconds,
+      setLinkIdleMinutes,
       dismissMicAutoStop,
       reconnect,
       hapticsEnabled,

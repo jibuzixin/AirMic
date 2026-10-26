@@ -148,20 +148,26 @@ public final class AirMicServer: ObservableObject {
     private func startStatsTimer() {
         statsTimer?.invalidate()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
-            guard let self, let receiver = self.audioReceiver else { return }
+            guard let self else { return }
+
+            // 心跳：收音时 2 秒一次，空转时 10 秒一次。
+            // 手机端原生层会直接回 pong（WebView 后台挂起也不影响），
+            // 既保持 TCP 活跃，又不会为了 RTT 数字频繁唤醒 Wi-Fi。
+            self.pingCounter += 1
+            let pingPeriod = self.isRecording ? 2 : 10
+            if self.pingCounter % pingPeriod == 0, let client = self.connectedClient {
+                var ping = Message(type: Message.Kind.ping)
+                ping.t = Int64(Date().timeIntervalSince1970 * 1000)
+                client.send(ping)
+            }
+
+            guard let receiver = self.audioReceiver else { return }
             var snapshot = receiver.stats(bufferMs: self.config.bufferMs)
             // 延迟用网络往返（真实可测），没有就是 nil → 界面显示 [--]
             snapshot.latencyMs = self.rttMs
             // 欠载对用户没有参考价值（没说话时它只会一直涨），不展示
             snapshot.underruns = nil
             self.onMain { self.stats = snapshot }
-
-            self.pingCounter += 1
-            if self.pingCounter % 2 == 0, let client = self.connectedClient {
-                var ping = Message(type: Message.Kind.ping)
-                ping.t = Int64(Date().timeIntervalSince1970 * 1000)
-                client.send(ping)
-            }
 
             // 诊断行：一眼看出卡在哪一环
             //   recv=0        → 音频包根本没到电脑（手机/网络）

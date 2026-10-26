@@ -31,6 +31,8 @@ export function SettingsPage({
     setThemeMode,
     silenceSeconds,
     setSilenceSeconds,
+    linkIdleMinutes,
+    setLinkIdleMinutes,
     hapticsEnabled,
     hapticStrength,
     setHapticsEnabled,
@@ -39,6 +41,15 @@ export function SettingsPage({
     disconnect,
     unpair,
   } = useAirmic()
+
+  const linkIdleLabel =
+    linkIdleMinutes === 0
+      ? '不自动断开'
+      : linkIdleMinutes === 60
+        ? '1 小时'
+        : linkIdleMinutes === 120
+          ? '2 小时'
+          : `${linkIdleMinutes} 分钟`
 
   return (
     <div className="flex h-full flex-col">
@@ -105,6 +116,53 @@ export function SettingsPage({
           <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
             常开收音时，超过这么久没有声音就自动关闭。
           </p>
+
+          <div className="mt-4 border-t border-border-subtle pt-3">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[12px] text-text-secondary">
+                闲置后断开连接
+              </span>
+              <span className="tabular text-[12px] text-text-primary">
+                {linkIdleLabel}
+              </span>
+            </div>
+            <div className="mt-2 grid grid-cols-4 gap-1.5">
+              {([
+                { value: 30, label: '30 分钟' },
+                { value: 60, label: '1 小时' },
+                { value: 120, label: '2 小时' },
+                { value: 0, label: '不自动' },
+              ] as const).map((option) => {
+                const active = linkIdleMinutes === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setLinkIdleMinutes(option.value)}
+                    aria-pressed={active}
+                    className="h-9 rounded-[8px] border text-[11px] transition-colors"
+                    style={{
+                      borderColor: active
+                        ? 'var(--color-border-strong)'
+                        : 'var(--color-border-subtle)',
+                      background: active
+                        ? 'var(--color-surface-3)'
+                        : 'var(--color-surface-2)',
+                      color: active
+                        ? 'var(--color-text-primary)'
+                        : 'var(--color-text-tertiary)',
+                    }}
+                  >
+                    {option.label}
+                  </button>
+                )
+              })}
+            </div>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
+              手机退到后台且没有收音时，连接会继续保持；超过所选时间才断开，下次打开自动重连。
+              如果系统仍然杀后台，把 AirMic 的电池设置改成「不受限制」。
+            </p>
+          </div>
         </SectionCard>
 
         {/* ---------- 外观 ---------- */}
@@ -219,7 +277,7 @@ export function SettingsPage({
         </SectionCard>
 
         <p className="mt-4 text-center text-[10px] text-text-faint">
-          版本 0.5.1 · 构建 {__BUILD_TIME__}
+          版本 0.6.0 · 构建 {__BUILD_TIME__}
         </p>
       </div>
     </div>

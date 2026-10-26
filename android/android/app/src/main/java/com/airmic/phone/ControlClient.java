@@ -35,6 +35,9 @@ public class ControlClient {
     private OutputStream output;
     private Thread readerThread;
     private volatile boolean running = false;
+    /// 每次连接 / 断开都 +1。旧连接的读线程只能影响自己那一代，
+    /// 不能在重连后把新连接的 running 置成 false。
+    private volatile int generation = 0;
 
     public ControlClient(Listener listener) {
         this.listener = listener;
@@ -45,11 +48,18 @@ public class ControlClient {
         Socket newSocket = new Socket();
         newSocket.connect(new InetSocketAddress(host, port), 5000);
         newSocket.setTcpNoDelay(true);
+        // 熄屏 / 后台时让系统继续探测这条连接（服务端也会定时 ping）
+        newSocket.setKeepAlive(true);
         socket = newSocket;
         output = newSocket.getOutputStream();
         running = true;
+        generation += 1;
+        final int myGeneration = generation;
 
-        readerThread = new Thread(this::readLoop, "airmic-control");
+        readerThread = new Thread(
+            () -> readLoop(myGeneration, newSocket),
+            "airmic-control"
+        );
         readerThread.setDaemon(true);
         readerThread.start();
 
@@ -58,6 +68,7 @@ public class ControlClient {
     }
 
     public synchronized void disconnect() {
+        generation += 1;
         running = false;
         try {
             if (socket != null) socket.close();
@@ -69,7 +80,9 @@ public class ControlClient {
     }
 
     public boolean isConnected() {
-        return socket != null && socket.isConnected() && running;
+        // isConnected() 只表示「曾经连上过」，对端断开后仍是 true。
+        // 用 isClosed() + running 判断本地这条连接是否还能用。
+        return socket != null && !socket.isClosed() && running;
     }
 
     /** 发一条消息（自动补换行） */
@@ -81,6 +94,17 @@ public class ControlClient {
             output.flush();
         } catch (IOException e) {
             Log.w(TAG, "发送失败：" + e.getMessage());
+            // 发送失败说明这条连接已经不可用了：关掉并通知一次，
+            // 避免留下一个「看起来还连着」的 socket。
+            generation += 1;
+            running = false;
+            try {
+                if (socket != null) socket.close();
+            } catch (IOException ignored) {
+                // 已经在失败路径上，关闭失败不追加处理
+            }
+            socket = null;
+            output = null;
             listener.onDisconnected(e.getMessage());
         }
     }
@@ -90,25 +114,39 @@ public class ControlClient {
         send((JSONObject) message);
     }
 
-    private void readLoop() {
+    private void readLoop(int myGeneration, Socket mySocket) {
         try (BufferedReader reader = new BufferedReader(
-            new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+            new InputStreamReader(mySocket.getInputStream(), StandardCharsets.UTF_8))) {
             String line;
-            while (running && (line = reader.readLine()) != null) {
+            while (running && generation == myGeneration
+                && (line = reader.readLine()) != null) {
+                if (generation != myGeneration) break;
                 if (line.isEmpty()) continue;
                 try {
-                    listener.onMessage(new JSONObject(line));
+                    JSONObject message = new JSONObject(line);
+                    // 电脑端的 ping 直接在这里回 pong：
+                    // WebView 在后台可能被挂起，交给 JS 回会导致心跳断掉。
+                    if ("ping".equals(message.optString("type"))) {
+                        JSONObject pong = new JSONObject();
+                        pong.put("type", "pong");
+                        if (message.has("t")) pong.put("t", message.optLong("t"));
+                        send(pong);
+                        // send 失败会关闭并让这一代失效，别再往下分发
+                        if (generation != myGeneration) break;
+                    }
+                    listener.onMessage(message);
                 } catch (JSONException e) {
                     Log.w(TAG, "消息解析失败：" + e.getMessage());
                 }
             }
         } catch (IOException e) {
-            if (running) {
+            if (running && generation == myGeneration) {
                 Log.w(TAG, "连接断开：" + e.getMessage());
                 listener.onDisconnected(e.getMessage());
             }
         } finally {
-            running = false;
+            // 只有当前这一代线程才有资格改 running
+            if (generation == myGeneration) running = false;
         }
     }
 }

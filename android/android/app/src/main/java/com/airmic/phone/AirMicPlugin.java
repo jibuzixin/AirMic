@@ -3,11 +3,14 @@ package com.airmic.phone;
 import android.Manifest;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
+import android.net.Uri;
 import android.view.Window;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 
 import com.getcapacitor.JSObject;
@@ -51,6 +54,8 @@ public class AirMicPlugin extends Plugin {
     private DeviceScanner scanner;
     private ControlClient control;
     private WifiManager.MulticastLock multicastLock;
+    /// 熄屏保活时短暂持有的 Wi-Fi 锁（回前台 / 闲置断开时释放）
+    private WifiManager.WifiLock linkWifiLock;
 
     private String deviceId;
     private String deviceName;
@@ -148,6 +153,7 @@ public class AirMicPlugin extends Plugin {
                 micActive = false;
                 // 旧地址不能再用：否则断连后点麦克风会拿它去启动采集
                 currentHost = null;
+                releaseLinkWifiLock();
                 AirmicMicService.stop(getContext());
 
                 JSObject payload = new JSObject();
@@ -162,6 +168,7 @@ public class AirMicPlugin extends Plugin {
     @Override
     protected void handleOnResume() {
         appActive = true;
+        releaseLinkWifiLock();
         scheduleIdleDisconnect();
         super.handleOnResume();
     }
@@ -170,6 +177,11 @@ public class AirMicPlugin extends Plugin {
     protected void handleOnPause() {
         appActive = false;
         scheduleIdleDisconnect();
+        if (control != null && control.isConnected() && !micActive) {
+            // 熄屏后系统会让 Wi-Fi 进入省电，TCP 几分钟就死。
+            // 只在不收音的后台保活期间持有，回前台 / 闲置断开立刻释放。
+            acquireLinkWifiLock();
+        }
         super.handleOnPause();
     }
 
@@ -179,6 +191,7 @@ public class AirMicPlugin extends Plugin {
         if (scanner != null) scanner.stop();
         if (control != null) control.disconnect();
         AirmicMicService.stop(getContext());
+        releaseLinkWifiLock();
         releaseMulticastLock();
         super.handleOnDestroy();
     }
@@ -283,6 +296,7 @@ public class AirMicPlugin extends Plugin {
         cancelIdleTimer();
         micActive = false;
         currentHost = null;
+        releaseLinkWifiLock();
         AirmicMicService.stop(getContext());
         if (control != null) control.disconnect();
         connecting.set(false);
@@ -324,6 +338,8 @@ public class AirMicPlugin extends Plugin {
         // 采集跑在前台服务里：切后台 / 锁屏都不会断
         micActive = true;
         cancelIdleTimer();
+        // 收音时 UDP 音频本身就是持续流量，不需要额外的 Wi-Fi 锁
+        releaseLinkWifiLock();
         try {
             AirmicMicService.start(getContext(), currentHost, MicCapture.AUDIO_PORT, mode);
         } catch (Exception e) {
@@ -384,10 +400,12 @@ public class AirMicPlugin extends Plugin {
         if (micActive || control == null || !control.isConnected()) return false;
         try {
             AirmicMicService.startLink(getContext());
+            Log.i(TAG, "连接保活服务已启动");
         } catch (Exception e) {
             Log.w(TAG, "启动连接保活服务失败：" + e.getMessage());
             return false;
         }
+        if (!appActive) acquireLinkWifiLock();
         scheduleIdleDisconnect();
         return true;
     }
@@ -411,10 +429,12 @@ public class AirMicPlugin extends Plugin {
         if (control == null || !control.isConnected()) return;
 
         final int minutes = linkIdleMinutes;
+        Log.i(TAG, "后台闲置计时：" + minutes + " 分钟后断开");
         idleHandler.postDelayed(() -> {
             if (appActive || micActive) return;
             if (control == null || !control.isConnected()) return;
             Log.i(TAG, "后台闲置 " + minutes + " 分钟，断开连接");
+            releaseLinkWifiLock();
             control.disconnect();
             AirmicMicService.stop(getContext());
 
@@ -423,6 +443,59 @@ public class AirMicPlugin extends Plugin {
             payload.put("error", "闲置超时，已断开连接");
             notifyListeners("connection", payload);
         }, minutes * 60_000L);
+    }
+
+    /* -------------------------------------------------------------- *
+     * 后台保活辅助
+     * -------------------------------------------------------------- */
+
+    @SuppressWarnings("deprecation")
+    private void acquireLinkWifiLock() {
+        if (linkWifiLock != null && linkWifiLock.isHeld()) return;
+        WifiManager wifiManager = (WifiManager) getContext()
+            .getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wifiManager == null) return;
+        linkWifiLock = wifiManager.createWifiLock(
+            WifiManager.WIFI_MODE_FULL_HIGH_PERF,
+            "airmic-link"
+        );
+        linkWifiLock.setReferenceCounted(false);
+        linkWifiLock.acquire();
+        Log.i(TAG, "熄屏保活：持有 Wi-Fi 锁");
+    }
+
+    private void releaseLinkWifiLock() {
+        if (linkWifiLock != null && linkWifiLock.isHeld()) {
+            linkWifiLock.release();
+            Log.i(TAG, "熄屏保活：释放 Wi-Fi 锁");
+        }
+        linkWifiLock = null;
+    }
+
+    /** 打开系统的电池优化设置，让用户把 AirMic 设为「不受限制」 */
+    @PluginMethod
+    public void openBatterySettings(PluginCall call) {
+        Context context = getContext();
+        try {
+            Intent intent = new Intent(
+                Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:" + context.getPackageName())
+            );
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(intent);
+        } catch (Exception e) {
+            try {
+                Intent intent = new Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.parse("package:" + context.getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                context.startActivity(intent);
+            } catch (Exception ignored) {
+                Log.w(TAG, "打开电池设置失败");
+            }
+        }
+        call.resolve();
     }
 
     /* -------------------------------------------------------------- *

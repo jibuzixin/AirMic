@@ -279,6 +279,8 @@ export type AirmicStore = {
   /** 静默多少秒自动关麦（0 = 关） */
   setSilenceSeconds: (seconds: number) => void
   setLinkIdleMinutes: (minutes: number) => void
+  /** 打开系统电池优化设置（让用户允许后台运行） */
+  openBatterySettings: () => void
   dismissMicAutoStop: () => void
   /** 主动重连（回到前台 / 断线时用） */
   reconnect: () => void
@@ -540,6 +542,14 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     autoBusyRef.current = true
     setReconnecting(true)
     setConnectionError(null)
+    // 先立即用上次地址试一次 —— 地址没变就能秒连；扫描同时进行
+    if (persisted.deviceHost) {
+      connectTarget({
+        id: persisted.deviceId ?? 'saved',
+        host: persisted.deviceHost,
+        port: persisted.devicePort,
+      })
+    }
     try {
       const list = await transport.scan()
       const target =
@@ -765,6 +775,12 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       /* 老版本原生插件没有这个方法时忽略 */
     })
   }, [linkIdleMinutes, transport])
+
+  const openBatterySettings = useCallback(() => {
+    void transport.openBatterySettings().catch(() => {
+      /* 老版本原生插件没有这个方法时忽略 */
+    })
+  }, [transport])
 
   const dismissMicAutoStop = useCallback(() => setMicAutoStopNotice(null), [])
 
@@ -1764,6 +1780,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setThemeMode,
       setSilenceSeconds,
       setLinkIdleMinutes,
+      openBatterySettings,
       dismissMicAutoStop,
       reconnect,
       retryConnection,
@@ -1846,6 +1863,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       setThemeMode,
       setSilenceSeconds,
       setLinkIdleMinutes,
+      openBatterySettings,
       dismissMicAutoStop,
       reconnect,
       retryConnection,

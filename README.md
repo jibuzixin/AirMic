@@ -8,7 +8,7 @@
 
 手机负责收音和操作，电脑负责出声和执行快捷键 —— 局域网内直连，不经过任何服务器。
 
-[![version](https://img.shields.io/badge/version-0.6.3-FFB020?style=flat-square)](../../releases/latest)
+[![version](https://img.shields.io/badge/version-0.6.4-FFB020?style=flat-square)](../../releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-13%2B-0B0B0D?style=flat-square&logo=apple&logoColor=white)](../../releases/latest)
 [![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](../../releases/latest)
 [![LAN only](https://img.shields.io/badge/network-LAN%20only-35C98A?style=flat-square)](#隐私)
@@ -38,7 +38,7 @@
 - **按应用切换预案**：电脑前台切到微信 / 浏览器 / 剪辑软件，手机自动换成对应的一套磁贴和麦克风绑定。
 - **文本磁片**：磁片里可以存一段提前写好的文字，触发时电脑直接粘贴到当前输入框，支持多行和中文。
 - **磁片组**：多个快捷键按顺序、按间隔执行；也可以绑到麦克风长按上（第一步按住，松手后执行其余步骤）。
-- **熄屏保活**：手机锁屏后仍和电脑保持连接（只有一条低优先级通知，不收麦克风），回来直接说话；后台闲置 30 分钟 / 1 小时 / 2 小时或永不自动断开，可在设置里选。
+- **熄屏保活**：手机锁屏后仍和电脑保持连接（只有一条低优先级通知，不收麦克风），回来直接说话；后台闲置 30 分钟 / 1 小时 / 2 小时或永不自动断开，可在设置里选。熄屏期间会短暂持有 Wi-Fi 锁，避免系统省电把连接断掉。
 - **省电**：静默 30 秒自动停止收音（可调）；收音和连接都跑在前台服务里，锁屏后不会被系统冻结。
 
 ## 预览
@@ -84,8 +84,8 @@ flowchart LR
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| macOS 13+ | `AirMic-0.6.3-macOS.zip` | 菜单栏应用，不占 Dock |
-| Android 6.0+ | `AirMic-v0.6.3-debug.apk` | Debug 签名，直接安装 |
+| macOS 13+ | `AirMic-0.6.4-macOS.zip` | 菜单栏应用，不占 Dock |
+| Android 6.0+ | `AirMic-v0.6.4-debug.apk` | Debug 签名，直接安装 |
 
 ### macOS
 
@@ -199,7 +199,7 @@ flowchart LR
 
 设置 → 省电 → **闲置后断开连接** 可以选 30 分钟 / 1 小时 / 2 小时 / 不自动断开。只有手机退到后台且没有收音时才开始计时；超时断开后，下次打开会自动重连，不会退回设备页。
 
-如果某些品牌的省电策略仍然杀后台，把 AirMic 的电池设置改成「不受限制」。
+如果某些品牌的省电策略仍然杀后台，到「设置 → 省电 → 允许后台运行（系统电池设置）」把 AirMic 设为「不受限制」。
 
 </details>
 

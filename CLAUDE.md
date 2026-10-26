@@ -190,7 +190,8 @@ airmic/
   回到前台超过 2 秒且没在收音时强制重建 TCP（旧 socket 可能已经是假连接）。
 - **自动重连始终和「换设备」同路径**：扫描 `_airmic._tcp` → 按电脑 id / 名字 / 已配对设备
   找到它 → 用扫描到的新 host/port 连接，连接时不带 JS token（让原生 TokenStore 决定）。
-  不要退回「先试旧地址 + JS token」的老路径 —— 那正是 0.6.2 里怎么点都连不上的原因。
+  开始扫描的同时先用上次地址快速试一次：地址没变就秒连，变了再由扫描结果接管。
+  不要退回「只试旧地址 + JS token」的老路径 —— 那正是 0.6.2 里怎么点都连不上的原因。
 - 重试循环**不依赖** `appStateChange` 事件（部分机型会漏发）；否则会出现「界面一直转圈但从不重试」。
 - **回前台不要强制重连**：连接还在就直接用；发一次 `ping` 做健康检查（电脑端 0.6.2+ 的
   `welcome.features` 含 `"ping"`），2 秒没回 pong 才标记断线并重连。老版本电脑端不支持
@@ -198,8 +199,10 @@ airmic/
 - **断连时点麦克风**：JS 先拦（提示「正在连接电脑」并触发重连），原生 `startMic` 再检查
   `control.isConnected()`；`AirmicMicService.start` 包在 try/catch 里，避免前台服务启动异常崩 App。
 - 只有配对失效（`welcome.pairingRequired=true`）或用户主动断开 / 解绑才回设备页。
-- 部分 OEM（三星 / vivo 等）的电池策略仍可能杀前台服务，设置页已提示把 AirMic
-  改成「不受限制」。
+- 部分 OEM（三星 / vivo 等）的电池策略仍可能杀前台服务。设置 → 省电 →「允许后台运行」
+  会打开系统电池优化设置；用户把 AirMic 设为「不受限制」后更稳。
+- Mac 端用 `ProcessInfo.beginActivity(.userInitiatedAllowingIdleSystemSleep)` 防止 App Nap
+  降低心跳频率（不阻止 Mac 空闲睡眠）。
 
 ---
 

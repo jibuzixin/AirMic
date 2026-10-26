@@ -39,6 +39,8 @@ public final class AirMicServer: ObservableObject {
     private var audioReceiver: AudioReceiver?
     private var statsTimer: Timer?
     private var pingCounter = 0
+    /// 防止 App Nap 把服务端的定时器 / 网络回调降频
+    private var activity: NSObjectProtocol?
 
     /// 电脑端的稳定设备 id（Bonjour TXT 里带的那串）
     public let deviceId: String
@@ -128,6 +130,15 @@ public final class AirMicServer: ObservableObject {
         foregroundWatcher.start()
         startStatsTimer()
 
+        // 菜单栏应用没有窗口时会被 App Nap 降频，心跳和网络回调会变慢。
+        // 允许系统空闲睡眠（不阻止 Mac 休眠），只避免被 App Nap 挂起。
+        if activity == nil {
+            activity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiatedAllowingIdleSystemSleep, .suddenTerminationDisabled],
+                reason: "AirMic 保持与手机的连接"
+            )
+        }
+
         if let preset = defaultPreset() {
             activePreset = preset
         }
@@ -142,6 +153,10 @@ public final class AirMicServer: ObservableObject {
         control.stop()
         statsTimer?.invalidate()
         statsTimer = nil
+        if let activity {
+            ProcessInfo.processInfo.endActivity(activity)
+            self.activity = nil
+        }
     }
 
     /// 每秒把音频管线的统计回写到面板

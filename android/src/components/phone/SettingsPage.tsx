@@ -33,6 +33,7 @@ export function SettingsPage({
     setSilenceSeconds,
     linkIdleMinutes,
     setLinkIdleMinutes,
+    openBatterySettings,
     hapticsEnabled,
     hapticStrength,
     setHapticsEnabled,
@@ -160,7 +161,17 @@ export function SettingsPage({
             </div>
             <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
               手机退到后台且没有收音时，连接会继续保持；超过所选时间才断开，下次打开自动重连。
-              如果系统仍然杀后台，把 AirMic 的电池设置改成「不受限制」。
+              熄屏期间会短暂持有 Wi-Fi 锁，到设定时间或回到前台立刻释放。
+            </p>
+            <button
+              type="button"
+              onClick={openBatterySettings}
+              className="mt-2 h-9 w-full rounded-[8px] border border-border-subtle bg-surface-2 text-[11px] text-text-secondary transition-colors hover:bg-surface-3 active:scale-[0.99]"
+            >
+              允许后台运行（系统电池设置）
+            </button>
+            <p className="mt-1.5 text-[10px] leading-relaxed text-text-faint">
+              三星 / vivo / 小米等系统的省电策略可能杀掉前台服务；把这个开关打开后更稳。
             </p>
           </div>
         </SectionCard>
@@ -277,7 +288,7 @@ export function SettingsPage({
         </SectionCard>
 
         <p className="mt-4 text-center text-[10px] text-text-faint">
-          版本 0.6.3 · 构建 {__BUILD_TIME__}
+          版本 0.6.4 · 构建 {__BUILD_TIME__}
         </p>
       </div>
     </div>

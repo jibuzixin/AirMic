@@ -50,6 +50,8 @@ export interface AirMicTransport {
    * 连接期间原生层会挂一个前台服务，熄屏也保持 TCP；闲置超时才释放。
    */
   setLinkIdleMinutes(minutes: number): Promise<void>
+  /** 打开系统的电池优化设置，让用户把 AirMic 设为「不受限制」 */
+  openBatterySettings(): Promise<void>
 }
 
 /* ------------------------------------------------------------------ *
@@ -70,6 +72,7 @@ interface AirMicNativePlugin {
   startMic(options: { mode: string }): Promise<void>
   stopMic(): Promise<void>
   setLinkIdleMinutes(options: { minutes: number }): Promise<void>
+  openBatterySettings(): Promise<void>
   addListener(event: string, handler: (data: any) => void): Promise<{ remove: () => Promise<void> }>
 }
 
@@ -127,6 +130,10 @@ class NativeTransport implements AirMicTransport {
 
   async setLinkIdleMinutes(minutes: number): Promise<void> {
     await AirMicNative.setLinkIdleMinutes({ minutes })
+  }
+
+  async openBatterySettings(): Promise<void> {
+    await AirMicNative.openBatterySettings()
   }
 
   private subscribe(
@@ -251,6 +258,10 @@ class LoopbackTransport implements AirMicTransport {
 
   async setLinkIdleMinutes(): Promise<void> {
     /* 开发模式不保活 */
+  }
+
+  async openBatterySettings(): Promise<void> {
+    /* 开发模式没有电池设置 */
   }
 
   onMessage(handler: (message: Record<string, any>) => void): () => void {

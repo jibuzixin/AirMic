@@ -205,20 +205,25 @@ public class AirMicPlugin extends Plugin {
         acquireMulticastLock();
         scanner.start();
 
-        // 扫一会儿就把当前结果返回（不持续扫描）
+        // 扫一会儿就把当前结果返回（不持续扫描）——
+        // 必须自己停掉 mDNS 并释放组播锁，否则会一直扫描、一直耗电。
         new Thread(() -> {
             try {
                 Thread.sleep(3000);
             } catch (InterruptedException ignored) {
                 Thread.currentThread().interrupt();
             }
-            call.resolve(scanner.snapshot());
+            JSObject result = scanner.snapshot();
+            scanner.stop();
+            releaseMulticastLock();
+            call.resolve(result);
         }).start();
     }
 
     @PluginMethod
     public void stopScan(PluginCall call) {
         scanner.stop();
+        releaseMulticastLock();
         call.resolve();
     }
 

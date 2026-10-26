@@ -186,8 +186,11 @@ airmic/
 - 闲置断开：手机**退到后台且没有收音**时，按设置 `linkIdleMinutes`（默认 60）计时，
   超时才断开；前台或收音中不计时。`0` = 不自动断开。设置存在手机 localStorage，
   同时同步给原生 SharedPreferences。
-- 断线不再退回设备页：留在麦克风页显示「正在重新连接…」，前台按 300ms → 30s 退避重连；
+- 断线不再退回设备页：留在麦克风页显示「正在重新连接…」，按 300ms → 30s 退避重连；
   回到前台超过 2 秒且没在收音时强制重建 TCP（旧 socket 可能已经是假连接）。
+- **地址过期自愈**：电脑休眠 / DHCP 后 IP 可能变化，旧 host 会一直连不上。自动重连失败后会重新扫
+  `_airmic._tcp`，按电脑 id / 名字更新 host/port 再连；回到 App 时也会先扫一次。
+- 重试循环**不依赖** `appStateChange` 事件（部分机型会漏发）；否则会出现「界面一直转圈但从不重试」。
 - 只有配对失效（`welcome.pairingRequired=true`）或用户主动断开 / 解绑才回设备页。
 - 部分 OEM（三星 / vivo 等）的电池策略仍可能杀前台服务，设置页已提示把 AirMic
   改成「不受限制」。
@@ -270,6 +273,7 @@ AIRMIC_PORT=47482 node tools/fake-phone.mjs # 换端口（避免和正在跑的 
 | 安卓返回键直接退到桌面 | 没有返回栈 / 依赖注册顺序 | `back-stack.tsx`，按优先级排队 |
 | 手机熄屏几分钟就显示断连 | 没有前台服务，进程被系统冻结；断线后 3 秒又退回设备页 | link 模式前台服务 + 10s 心跳 + 原生 pong；断线留在麦克风页自动重连（§4.9） |
 | Android 14 起前台服务崩溃 | 声明了 `foregroundServiceType` 但 `startForeground` 没带类型 | link 用 `CONNECTED_DEVICE`、收音用 `MICROPHONE`，并声明对应的 `FOREGROUND_SERVICE_*` 权限 |
+| 自动重连一直转圈但连不上 | 保存的电脑 IP 已过期，自动重连不会重新扫描；或 `appStateChange` 漏发导致循环没启动 | 失败后 mDNS 重发现并更新 host/port；重试循环不依赖 appState；连接超时 2.5s + 8s 看门狗 |
 | 长按触发系统选字/菜单 | WebView 默认允许选择 | `index.css` 里全局 `user-select/touch-callout: none`，输入框例外 |
 | 电脑端配置一直不更新 | 手机推的磁贴带 `groupId`（磁片组），电脑端 `Tile.magnetId` 必填 → 整条 `config.push` 解码失败 | `Tile.magnetId` 可选；`sanitize` 保留 `groupId` 磁贴 |
 | 开麦瞬间「噗」一声 | AAC 编码器 priming 瞬态 | 写入端每段音频开始强制 15ms 淡入 |

@@ -313,8 +313,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   )
   /** 真正的连接状态（paired 只是「配对过」） */
   const [connected, setConnected] = useState(false)
-  /** App 是否在前台 —— 后台时不做重连轮询 */
-  const [appActive, setAppActive] = useState(true)
   /** 电脑端的收音是用户手动关的吗（false = 静默自动关） */
   const [serverStoppedByUser, setServerStoppedByUser] = useState(true)
   const [knownDevices, setKnownDevices] = useState<Device[]>([])
@@ -459,17 +457,25 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
   /** 原生事件回调里读取最新状态，避免闭包过期 */
   const micModeRef = useRef(micMode)
   const pairedRef = useRef(paired)
+  const connectedRef = useRef(connected)
   useEffect(() => {
     micModeRef.current = micMode
   }, [micMode])
   useEffect(() => {
     pairedRef.current = paired
   }, [paired])
+  useEffect(() => {
+    connectedRef.current = connected
+  }, [connected])
 
   /** 防止重连轮询和启动连接同时打两次 */
   const connectInFlightRef = useRef(false)
   /** 上一次发起连接的时间：给 welcome 留出到达时间，避免重复连 */
   const lastConnectAtRef = useRef(0)
+  /** 上一次连接是不是失败了 —— 失败后优先重新扫 mDNS，拿新地址 */
+  const lastConnectFailedRef = useRef(false)
+  /** 上一次重新扫描的时间（节流） */
+  const lastDiscoveryAtRef = useRef(0)
 
   /** 主动重连（回到前台、连接断开时用） */
   const reconnect = useCallback(() => {
@@ -477,7 +483,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     if (connectInFlightRef.current) return
     connectInFlightRef.current = true
     lastConnectAtRef.current = Date.now()
-    setConnectionError(null)
+    lastConnectFailedRef.current = false
     void transport
       .connect({
         deviceId: persisted.deviceId ?? 'saved',
@@ -486,12 +492,49 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         token: persisted.token,
       })
       .catch((error: Error) => {
+        lastConnectFailedRef.current = true
         setConnectionError(error.message || '连不上电脑，确认电脑端还在运行')
       })
       .finally(() => {
         connectInFlightRef.current = false
       })
   }, [persisted, transport])
+
+  /**
+   * 重新在局域网里找一次这台电脑。
+   *
+   * 电脑休眠 / DHCP 续租后 IP 可能变了，之前保存的 host 就连不上；
+   * 手动「换设备」能连上，正是因为它重新扫了 mDNS。自动重连失败几次后
+   * 也走一遍扫描，把地址更新掉再连。
+   */
+  const rediscover = useCallback(async (): Promise<boolean> => {
+    const now = Date.now()
+    if (now - lastDiscoveryAtRef.current < 10000) return false
+    lastDiscoveryAtRef.current = now
+    try {
+      const list = await transport.scan()
+      const target =
+        list.find((d) => d.id === persisted.deviceId) ??
+        list.find((d) => d.name === persisted.deviceName) ??
+        (list.length === 1 ? list[0] : null)
+      if (!target?.host) return false
+      persist({
+        deviceId: target.id,
+        deviceName: target.name,
+        deviceHost: target.host,
+        devicePort: target.port ?? 47471,
+      })
+      setPairedDevice(target)
+      return true
+    } catch {
+      return false
+    }
+  }, [persist, persisted.deviceId, persisted.deviceName, transport])
+
+  const rediscoverRef = useRef(rediscover)
+  useEffect(() => {
+    rediscoverRef.current = rediscover
+  }, [rediscover])
 
   /**
    * 回到前台：
@@ -502,14 +545,12 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     return transport.onAppStateChange((active) => {
       if (!active) {
         backgroundedAtRef.current = Date.now()
-        setAppActive(false)
         return
       }
       const away = backgroundedAtRef.current
         ? Date.now() - backgroundedAtRef.current
         : 0
       backgroundedAtRef.current = null
-      setAppActive(true)
       if (
         away > 2000 &&
         pairedRef.current &&
@@ -518,18 +559,31 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       ) {
         // 标记成未连接，让下面的重连 effect 接手
         setConnected(false)
+        // 顺便重新扫一次：电脑休眠后 IP 可能变了，旧地址会一直连不上
+        void rediscoverRef.current().then((updated) => {
+          if (
+            updated &&
+            !backgroundedAtRef.current &&
+            !connectedRef.current &&
+            !connectInFlightRef.current
+          ) {
+            reconnect()
+          }
+        })
       }
     })
-  }, [persisted.token, transport])
+  }, [persisted.token, reconnect, transport])
 
   /**
    * 断线自动重连。
    *
-   * 只在 App 前台时轮询，退到后台就停 —— 后台靠原生前台服务保持连接，
-   * 不靠 JS 定时器。退避到 30 秒一次，避免电脑没开时一直打网络。
+   * 连接期间后台靠原生前台服务保活；这里只在断开时轮询。
+   * 退避到 30 秒一次，避免电脑没开时一直打网络。
+   * 不依赖 App 前后台状态 —— 那个事件在部分机型上可能漏掉，
+   * 会导致「一直显示重新连接但永远不重试」。
    */
   useEffect(() => {
-    if (!appActive || connected || !paired) return
+    if (connected || !paired) return
     if (!persisted.token || !persisted.deviceHost) return
 
     let cancelled = false
@@ -537,14 +591,29 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
     let timer: number | null = null
     const delays = [500, 1000, 2000, 5000, 10000, 20000, 30000]
 
-    const tick = () => {
+    const tick = async () => {
       if (cancelled) return
+      // 原生连接如果卡死，别让 in-flight 标记永远挡住重试
+      if (
+        connectInFlightRef.current &&
+        Date.now() - lastConnectAtRef.current > 8000
+      ) {
+        connectInFlightRef.current = false
+        setConnectionError('连接超时，正在重试')
+      }
       if (
         !connectInFlightRef.current &&
         Date.now() - lastConnectAtRef.current > 1500
       ) {
-        reconnect()
+        // 上次连不上 → 先重新扫一遍电脑地址，再连
+        if (lastConnectFailedRef.current) {
+          await rediscoverRef.current()
+        }
+        if (!cancelled && !connectInFlightRef.current) {
+          reconnect()
+        }
       }
+      if (cancelled) return
       const delay = delays[Math.min(attempt, delays.length - 1)]
       attempt += 1
       timer = window.setTimeout(tick, delay)
@@ -556,7 +625,6 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
       if (timer !== null) window.clearTimeout(timer)
     }
   }, [
-    appActive,
     connected,
     paired,
     persisted.deviceHost,

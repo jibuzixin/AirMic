@@ -46,7 +46,7 @@ public class ControlClient {
     public synchronized void connect(String host, int port) throws IOException {
         disconnect();
         Socket newSocket = new Socket();
-        newSocket.connect(new InetSocketAddress(host, port), 5000);
+        newSocket.connect(new InetSocketAddress(host, port), 2500);
         newSocket.setTcpNoDelay(true);
         // 熄屏 / 后台时让系统继续探测这条连接（服务端也会定时 ping）
         newSocket.setKeepAlive(true);

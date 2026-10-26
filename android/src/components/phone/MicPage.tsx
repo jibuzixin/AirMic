@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { SlidersHorizontal, RefreshCw, Settings } from 'lucide-react'
+import { SlidersHorizontal, Settings } from 'lucide-react'
 import { LevelRing } from '@/components/LevelRing'
 import { MicButton } from '@/components/MicButton'
 import { useActivePreset, useAirmic } from '@/lib/airmic-store'
@@ -63,6 +63,7 @@ export function MicPage({
     dismissMicAutoStop,
     reconnect,
     disconnect,
+    connectionError,
     micLevel,
   } = useAirmic()
   const preset = useActivePreset()
@@ -292,23 +293,25 @@ export function MicPage({
           )}
         </div>
         {!connected && (
-          <div className="mb-2 flex items-stretch gap-1.5">
+          <div className="mb-2 flex items-center gap-2 px-1">
             <button
               type="button"
               onClick={reconnect}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-[10px] border border-border-subtle bg-surface-1 py-1.5 text-[11px] text-text-secondary active:scale-[0.99]"
+              title={connectionError ?? undefined}
+              className="flex min-w-0 items-center gap-1.5 text-[10px] text-text-tertiary active:opacity-70"
             >
-              <RefreshCw
-                size={11}
-                strokeWidth={1.8}
-                className="animate-spin"
+              <span
+                className="size-1.5 shrink-0 animate-pulse rounded-full"
+                style={{ background: 'var(--color-amber-accent)' }}
               />
-              正在重新连接…
+              <span className="truncate">
+                {connectionError ? '连接不上，点此重试' : '正在重新连接…'}
+              </span>
             </button>
             <button
               type="button"
               onClick={disconnect}
-              className="shrink-0 rounded-[10px] border border-border-subtle bg-surface-1 px-3 text-[11px] text-text-tertiary active:scale-[0.99]"
+              className="ml-auto shrink-0 text-[10px] text-text-faint transition-colors hover:text-text-secondary"
             >
               换设备
             </button>

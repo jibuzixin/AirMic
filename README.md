@@ -8,7 +8,7 @@
 
 手机负责收音和操作，电脑负责出声和执行快捷键 —— 局域网内直连，不经过任何服务器。
 
-[![version](https://img.shields.io/badge/version-0.6.0-FFB020?style=flat-square)](../../releases/latest)
+[![version](https://img.shields.io/badge/version-0.6.1-FFB020?style=flat-square)](../../releases/latest)
 [![macOS](https://img.shields.io/badge/macOS-13%2B-0B0B0D?style=flat-square&logo=apple&logoColor=white)](../../releases/latest)
 [![Android](https://img.shields.io/badge/Android-6.0%2B-3DDC84?style=flat-square&logo=android&logoColor=white)](../../releases/latest)
 [![LAN only](https://img.shields.io/badge/network-LAN%20only-35C98A?style=flat-square)](#隐私)
@@ -84,8 +84,8 @@ flowchart LR
 
 | 平台 | 文件 | 说明 |
 |---|---|---|
-| macOS 13+ | `AirMic-0.6.0-macOS.zip` | 菜单栏应用，不占 Dock |
-| Android 6.0+ | `AirMic-v0.6.0-debug.apk` | Debug 签名，直接安装 |
+| macOS 13+ | `AirMic-0.6.1-macOS.zip` | 菜单栏应用，不占 Dock |
+| Android 6.0+ | `AirMic-v0.6.1-debug.apk` | Debug 签名，直接安装 |
 
 ### macOS
 
@@ -194,6 +194,8 @@ flowchart LR
 <summary><strong>手机熄屏几分钟后要不要重新连？</strong></summary>
 
 不需要。连接期间 AirMic 会用一个低优先级前台服务维持控制通道（不收音，也不申请唤醒锁），熄屏几分钟回来仍然是已连接状态。
+
+如果电脑休眠后 IP 变了，自动重连会重新扫描局域网并更新地址；界面上的「正在重新连接…」只是过渡提示。
 
 设置 → 省电 → **闲置后断开连接** 可以选 30 分钟 / 1 小时 / 2 小时 / 不自动断开。只有手机退到后台且没有收音时才开始计时；超时断开后，下次打开会自动重连，不会退回设备页。
 

@@ -647,7 +647,7 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
         setMicMode('idle')
         void transport.stopMic()
       }
-    }, 2000)
+    }, 3000)
     healthPingRef.current = { t, timer }
     send({ type: 'ping', t })
   }, [clearHealthCheck, send, transport])
@@ -973,12 +973,9 @@ export function AirmicProvider({ children }: { children: ReactNode }) {
           }
           break
         case 'pong':
-          // 回到前台时主动 ping 的回包
-          if (
-            healthPingRef.current &&
-            (typeof message.t !== 'number' ||
-              message.t === healthPingRef.current.t)
-          ) {
+          // 回到前台时主动 ping 的回包。只要在等 health check，
+          // 收到任何 pong 都说明链路是活的（服务器不会主动给手机发 pong）。
+          if (healthPingRef.current) {
             clearHealthCheck()
           }
           break

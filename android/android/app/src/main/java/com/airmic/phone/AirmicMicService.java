@@ -150,7 +150,7 @@ public class AirmicMicService extends Service {
     private Notification buildNotification(String mode) {
         boolean link = MODE_LINK.equals(mode);
         String text = link
-            ? "已连接 · 保持连接"
+            ? "后台保活中"
             : ("ptt".equals(mode) ? "正在说话" : "正在收音");
 
         Notification.Builder builder;

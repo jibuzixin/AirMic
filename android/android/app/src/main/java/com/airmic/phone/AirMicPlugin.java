@@ -143,18 +143,30 @@ public class AirMicPlugin extends Plugin {
             }
 
             @Override public void onConnected() {
+                // TCP 一建立就把保活服务拉起来，不要等 welcome ——
+                // 这样即使握手消息稍有延迟，进程也已经在后台服务里，不会被冻结。
+                startLinkIfIdle();
                 JSObject payload = new JSObject();
                 payload.put("connected", true);
                 notifyListeners("connection", payload);
             }
 
             @Override public void onDisconnected(String error) {
-                cancelIdleTimer();
                 micActive = false;
                 // 旧地址不能再用：否则断连后点麦克风会拿它去启动采集
                 currentHost = null;
+                // 连接已经断了，Wi-Fi 锁没有意义；保留前台服务即可
                 releaseLinkWifiLock();
-                AirmicMicService.stop(getContext());
+
+                // ⚠️ 断线时不立刻停掉保活服务：保留前台服务，
+                // 让进程在后台继续存活，等 JS 重连或用户回来。
+                // 真正长时间不用由闲置计时器停掉。
+                try {
+                    AirmicMicService.startLink(getContext());
+                } catch (Exception e) {
+                    Log.w(TAG, "断线后保持前台服务失败：" + e.getMessage());
+                }
+                scheduleIdleDisconnect();
 
                 JSObject payload = new JSObject();
                 payload.put("connected", false);
@@ -169,6 +181,8 @@ public class AirMicPlugin extends Plugin {
     protected void handleOnResume() {
         appActive = true;
         releaseLinkWifiLock();
+        // 以防某个版本在后台没成功拉起服务：回前台补一次
+        startLinkIfIdle();
         scheduleIdleDisconnect();
         super.handleOnResume();
     }
@@ -426,16 +440,17 @@ public class AirMicPlugin extends Plugin {
         if (idleHandler == null) return;
         idleHandler.removeCallbacksAndMessages(null);
         if (appActive || micActive || linkIdleMinutes <= 0) return;
-        if (control == null || !control.isConnected()) return;
 
         final int minutes = linkIdleMinutes;
         Log.i(TAG, "后台闲置计时：" + minutes + " 分钟后断开");
         idleHandler.postDelayed(() -> {
             if (appActive || micActive) return;
-            if (control == null || !control.isConnected()) return;
             Log.i(TAG, "后台闲置 " + minutes + " 分钟，断开连接");
             releaseLinkWifiLock();
-            control.disconnect();
+            if (control != null && control.isConnected()) {
+                control.disconnect();
+            }
+            // 即使 socket 已经先断了，也要把保活服务停掉
             AirmicMicService.stop(getContext());
 
             JSObject payload = new JSObject();
